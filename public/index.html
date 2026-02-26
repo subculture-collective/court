@@ -49,7 +49,9 @@
                 padding: 16px;
             }
 
-            h1, h2, h3 {
+            h1,
+            h2,
+            h3 {
                 margin: 0 0 10px;
             }
 
@@ -175,7 +177,8 @@
             <section class="panel">
                 <h1>⚖️ Improv Court POC</h1>
                 <p class="muted">
-                    Text-first courtroom flow with multi-agent roles, live transcript, and jury voting.
+                    Text-first courtroom flow with multi-agent roles, live
+                    transcript, and jury voting.
                 </p>
 
                 <div class="form-row">
@@ -186,18 +189,26 @@
                 </div>
                 <div class="form-row">
                     <select id="caseType">
-                        <option value="criminal">Criminal (Guilty / Not Guilty)</option>
-                        <option value="civil">Civil (Liable / Not Liable)</option>
+                        <option value="criminal">
+                            Criminal (Guilty / Not Guilty)
+                        </option>
+                        <option value="civil">
+                            Civil (Liable / Not Liable)
+                        </option>
                     </select>
                     <button id="startBtn">Start Session</button>
                 </div>
 
-                <hr style="border-color:#2b2f41; opacity:0.6; margin:16px 0;" />
+                <hr
+                    style="border-color: #2b2f41; opacity: 0.6; margin: 16px 0"
+                />
 
                 <div class="phase">
                     <div>
-                        <h3 style="margin:0;">Live Transcript</h3>
-                        <div class="muted" id="sessionMeta">No session yet.</div>
+                        <h3 style="margin: 0">Live Transcript</h3>
+                        <div class="muted" id="sessionMeta">
+                            No session yet.
+                        </div>
                     </div>
                     <span class="badge" id="phaseBadge">phase: idle</span>
                 </div>
@@ -206,22 +217,28 @@
             </section>
 
             <aside class="panel">
-                <h2 style="font-size:18px;">Jury Controls</h2>
-                <p class="muted">Vote while polls are open. Tallies update live.</p>
+                <h2 style="font-size: 18px">Jury Controls</h2>
+                <p class="muted">
+                    Vote while polls are open. Tallies update live.
+                </p>
 
-                <div style="margin-top:12px;">
-                    <h3 style="font-size:14px; margin-bottom:6px;">Verdict vote</h3>
+                <div style="margin-top: 12px">
+                    <h3 style="font-size: 14px; margin-bottom: 6px">
+                        Verdict vote
+                    </h3>
                     <div id="verdictTallies" class="vote-grid"></div>
                     <div class="vote-actions" id="verdictActions"></div>
                 </div>
 
-                <div style="margin-top:16px;">
-                    <h3 style="font-size:14px; margin-bottom:6px;">Sentence vote</h3>
+                <div style="margin-top: 16px">
+                    <h3 style="font-size: 14px; margin-bottom: 6px">
+                        Sentence vote
+                    </h3>
                     <div id="sentenceTallies" class="vote-grid"></div>
                     <div class="vote-actions" id="sentenceActions"></div>
                 </div>
 
-                <div style="margin-top:16px;" class="muted" id="status"></div>
+                <div style="margin-top: 16px" class="muted" id="status"></div>
             </aside>
         </div>
 

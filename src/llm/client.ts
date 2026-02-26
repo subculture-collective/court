@@ -25,7 +25,7 @@ export function sanitizeDialogue(text: string): string {
         .replace(/<\/?[a-z_][a-z0-9_-]*(?:\s[^>]*)?\s*>/gi, '')
         .replace(/https?:\/\/\S+/g, '')
         .replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, '$1')
-    .replace(/^["']|["']$/g, '')
+        .replace(/^["']|["']$/g, '')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -46,7 +46,9 @@ function mockReply(prompt: string): string {
     return 'Order in the court. I acknowledge the point and move us to the next absurdly important matter.';
 }
 
-export async function llmGenerate(options: LLMGenerateOptions): Promise<string> {
+export async function llmGenerate(
+    options: LLMGenerateOptions,
+): Promise<string> {
     const {
         messages,
         model = DEFAULT_MODEL,
@@ -62,19 +64,22 @@ export async function llmGenerate(options: LLMGenerateOptions): Promise<string> 
         return mockReply(latestUserMessage ?? '');
     }
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+    const response = await fetch(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+            },
+            body: JSON.stringify({
+                model,
+                messages,
+                temperature,
+                max_tokens: maxTokens,
+            }),
         },
-        body: JSON.stringify({
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-        }),
-    });
+    );
 
     if (!response.ok) {
         const body = await response.text();

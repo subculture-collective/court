@@ -19,7 +19,9 @@ function pickPreferred(
     return fallback;
 }
 
-export function assignCourtRoles(participants: AgentId[]): CourtRoleAssignments {
+export function assignCourtRoles(
+    participants: AgentId[],
+): CourtRoleAssignments {
     const pool = uniqueOrder(participants);
     const used = new Set<AgentId>();
 

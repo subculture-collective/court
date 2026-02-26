@@ -59,7 +59,7 @@ async function generateTurn(input: {
         maxTokens: 260,
     });
 
-    store.addTurn({
+    await input.store.addTurn({
         sessionId: session.id,
         speaker,
         role,
@@ -69,26 +69,24 @@ async function generateTurn(input: {
 }
 
 function verdictOptions(caseType: CaseType): string[] {
-    return caseType === 'civil' ? ['liable', 'not_liable'] : ['guilty', 'not_guilty'];
+    return caseType === 'civil' ?
+            ['liable', 'not_liable']
+        :   ['guilty', 'not_guilty'];
 }
 
 export async function runCourtSession(
     sessionId: string,
     store: CourtSessionStore,
 ): Promise<void> {
-    const session = store.startSession(sessionId);
+    const session = await store.startSession(sessionId);
 
     try {
-        const {
-            judge,
-            prosecutor,
-            defense,
-            witnesses,
-            bailiff,
-        } = session.metadata.roleAssignments;
+        const { judge, prosecutor, defense, witnesses, bailiff } =
+            session.metadata.roleAssignments;
 
-        store.setPhase(session.id, 'case_prompt', 8_000);
-        store.addTurn({
+        session.phase = 'case_prompt';
+        await store.setPhase(session.id, 'case_prompt', 8_000);
+        await store.addTurn({
             sessionId: session.id,
             speaker: bailiff,
             role: 'bailiff',
@@ -97,7 +95,8 @@ export async function runCourtSession(
         });
         await sleep(1_200);
 
-        store.setPhase(session.id, 'openings', 30_000);
+        session.phase = 'openings';
+        await store.setPhase(session.id, 'openings', 30_000);
         await generateTurn({
             store,
             session,
@@ -116,10 +115,14 @@ export async function runCourtSession(
                 'Deliver your opening statement and establish reasonable doubt / non-liability.',
         });
 
-        store.setPhase(session.id, 'witness_exam', 40_000);
+        session.phase = 'witness_exam';
+        await store.setPhase(session.id, 'witness_exam', 40_000);
         await sleep(600);
 
-        const activeWitnesses = witnesses.slice(0, Math.max(1, witnesses.length));
+        const activeWitnesses = witnesses.slice(
+            0,
+            Math.max(1, witnesses.length),
+        );
         let exchangeCount = 0;
 
         for (const [index, witness] of activeWitnesses.entries()) {
@@ -147,7 +150,8 @@ export async function runCourtSession(
                 session,
                 speaker: prosecutor,
                 role: 'prosecutor',
-                userInstruction: 'Cross-examine this witness with one pointed challenge.',
+                userInstruction:
+                    'Cross-examine this witness with one pointed challenge.',
             });
             await sleep(600);
 
@@ -156,7 +160,8 @@ export async function runCourtSession(
                 session,
                 speaker: defense,
                 role: 'defense',
-                userInstruction: 'Respond to the cross-exam and protect witness credibility in one short rebuttal.',
+                userInstruction:
+                    'Respond to the cross-exam and protect witness credibility in one short rebuttal.',
             });
 
             exchangeCount += 1;
@@ -175,7 +180,8 @@ export async function runCourtSession(
             await sleep(800);
         }
 
-        store.setPhase(session.id, 'closings', 30_000);
+        session.phase = 'closings';
+        await store.setPhase(session.id, 'closings', 30_000);
         await generateTurn({
             store,
             session,
@@ -196,12 +202,13 @@ export async function runCourtSession(
 
         const verdictChoices = verdictOptions(session.metadata.caseType);
 
-        store.setPhase(
+        session.phase = 'verdict_vote';
+        await store.setPhase(
             session.id,
             'verdict_vote',
             session.metadata.verdictVoteWindowMs,
         );
-        store.addTurn({
+        await store.addTurn({
             sessionId: session.id,
             speaker: bailiff,
             role: 'bailiff',
@@ -210,12 +217,13 @@ export async function runCourtSession(
         });
         await sleep(session.metadata.verdictVoteWindowMs);
 
-        store.setPhase(
+        session.phase = 'sentence_vote';
+        await store.setPhase(
             session.id,
             'sentence_vote',
             session.metadata.sentenceVoteWindowMs,
         );
-        store.addTurn({
+        await store.addTurn({
             sessionId: session.id,
             speaker: bailiff,
             role: 'bailiff',
@@ -224,15 +232,23 @@ export async function runCourtSession(
         });
         await sleep(session.metadata.sentenceVoteWindowMs);
 
-        store.setPhase(session.id, 'final_ruling', 20_000);
+        session.phase = 'final_ruling';
+        await store.setPhase(session.id, 'final_ruling', 20_000);
+
+        const latest = await store.getSession(session.id);
+        if (!latest) {
+            throw new Error(
+                `Session not found during final ruling: ${session.id}`,
+            );
+        }
 
         const winningVerdict = bestOf(
-            session.metadata.verdictVotes,
+            latest.metadata.verdictVotes,
             verdictChoices[0],
         );
         const winningSentence = bestOf(
-            session.metadata.sentenceVotes,
-            session.metadata.sentenceOptions[0],
+            latest.metadata.sentenceVotes,
+            latest.metadata.sentenceOptions[0],
         );
 
         await generateTurn({
@@ -240,13 +256,15 @@ export async function runCourtSession(
             session,
             speaker: judge,
             role: 'judge',
-            userInstruction:
-                `Deliver the final ruling with dramatic comedic flair. Winning verdict: ${winningVerdict}. Winning sentence: ${winningSentence}. Mention both explicitly.`,
+            userInstruction: `Deliver the final ruling with dramatic comedic flair. Winning verdict: ${winningVerdict}. Winning sentence: ${winningSentence}. Mention both explicitly.`,
         });
 
-        store.completeSession(session.id);
+        await store.completeSession(session.id);
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown orchestration error';
-        store.failSession(session.id, message);
+        const message =
+            error instanceof Error ?
+                error.message
+            :   'Unknown orchestration error';
+        await store.failSession(session.id, message);
     }
 }

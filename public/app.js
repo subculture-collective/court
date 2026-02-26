@@ -79,9 +79,9 @@ function renderActions(session) {
     sentenceActions.innerHTML = '';
 
     const verdictOptions =
-        session.metadata.caseType === 'civil'
-            ? ['liable', 'not_liable']
-            : ['guilty', 'not_guilty'];
+        session.metadata.caseType === 'civil' ?
+            ['liable', 'not_liable']
+        :   ['guilty', 'not_guilty'];
 
     for (const option of verdictOptions) {
         const button = document.createElement('button');
@@ -109,7 +109,8 @@ function connectStream(sessionId) {
         const payload = JSON.parse(event.data);
 
         if (payload.type === 'snapshot') {
-            const { session, turns, verdictVotes, sentenceVotes } = payload.payload;
+            const { session, turns, verdictVotes, sentenceVotes } =
+                payload.payload;
             activeSession = session;
             phaseBadge.textContent = `phase: ${session.phase}`;
             sessionMeta.textContent = `${session.id} · ${session.status}`;
