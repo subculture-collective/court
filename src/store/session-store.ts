@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import postgres, { type Sql } from 'postgres';
 import type {
     AgentId,
+    CaseType,
     CourtEvent,
     CourtPhase,
     CourtRole,
@@ -11,6 +12,39 @@ import type {
     CourtTurn,
 } from '../types.js';
 import { runMigrations } from '../db/migrations.js';
+
+const PHASE_SEQUENCE: CourtPhase[] = [
+    'case_prompt',
+    'openings',
+    'witness_exam',
+    'evidence_reveal',
+    'closings',
+    'verdict_vote',
+    'sentence_vote',
+    'final_ruling',
+];
+
+function phaseIndex(phase: CourtPhase): number {
+    return PHASE_SEQUENCE.indexOf(phase);
+}
+
+function assertValidPhaseTransition(current: CourtPhase, next: CourtPhase): void {
+    const currentIndex = phaseIndex(current);
+    const nextIndex = phaseIndex(next);
+    const isNoop = currentIndex === nextIndex;
+    const isForwardStep = nextIndex === currentIndex + 1;
+    const skipEvidenceReveal =
+        current === 'witness_exam' && next === 'closings';
+    if (!isNoop && !isForwardStep && !skipEvidenceReveal) {
+        throw new Error(`Invalid phase transition: ${current} -> ${next}`);
+    }
+}
+
+function allowedVerdictChoices(caseType: CaseType): string[] {
+    return caseType === 'civil' ?
+            ['liable', 'not_liable']
+        :   ['guilty', 'not_guilty'];
+}
 
 export interface CourtSessionStore {
     createSession(input: {
@@ -37,6 +71,11 @@ export interface CourtSessionStore {
         sessionId: string;
         voteType: 'verdict' | 'sentence';
         choice: string;
+    }): Promise<CourtSession>;
+    recordFinalRuling(input: {
+        sessionId: string;
+        verdict: string;
+        sentence: string;
     }): Promise<CourtSession>;
     completeSession(sessionId: string): Promise<CourtSession>;
     failSession(sessionId: string, reason: string): Promise<CourtSession>;
@@ -108,6 +147,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         phaseDurationMs?: number,
     ): Promise<CourtSession> {
         const session = this.mustGet(sessionId);
+        assertValidPhaseTransition(session.phase, phase);
         session.phase = phase;
         session.metadata.phaseStartedAt = new Date().toISOString();
 
@@ -166,6 +206,27 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         choice: string;
     }): Promise<CourtSession> {
         const session = this.mustGet(input.sessionId);
+        if (
+            (input.voteType === 'verdict' && session.phase !== 'verdict_vote') ||
+            (input.voteType === 'sentence' && session.phase !== 'sentence_vote')
+        ) {
+            throw new Error(
+                `Cannot cast ${input.voteType} vote during phase ${session.phase}`,
+            );
+        }
+
+        if (input.voteType === 'verdict') {
+            const validChoices = allowedVerdictChoices(session.metadata.caseType);
+            if (!validChoices.includes(input.choice)) {
+                throw new Error(
+                    `Invalid verdict choice: ${input.choice}. Valid choices: ${validChoices.join(', ')}`,
+                );
+            }
+        } else if (!session.metadata.sentenceOptions.includes(input.choice)) {
+            throw new Error(
+                `Invalid sentence choice: ${input.choice}. Valid choices: ${session.metadata.sentenceOptions.join(', ')}`,
+            );
+        }
 
         if (input.voteType === 'verdict') {
             session.metadata.verdictVotes[input.choice] =
@@ -186,6 +247,20 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             },
         });
 
+        return session;
+    }
+
+    async recordFinalRuling(input: {
+        sessionId: string;
+        verdict: string;
+        sentence: string;
+    }): Promise<CourtSession> {
+        const session = this.mustGet(input.sessionId);
+        session.metadata.finalRuling = {
+            verdict: input.verdict,
+            sentence: input.sentence,
+            decidedAt: new Date().toISOString(),
+        };
         return session;
     }
 
@@ -414,6 +489,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             if (!current) {
                 throw new Error(`Session not found: ${sessionId}`);
             }
+            assertValidPhaseTransition(current.phase, phase);
 
             const metadata = {
                 ...(current.metadata ?? {}),
@@ -544,11 +620,32 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             } as CourtSessionMetadata;
             metadata.verdictVotes ??= {};
             metadata.sentenceVotes ??= {};
+            if (
+                (input.voteType === 'verdict' &&
+                    current.phase !== 'verdict_vote') ||
+                (input.voteType === 'sentence' &&
+                    current.phase !== 'sentence_vote')
+            ) {
+                throw new Error(
+                    `Cannot cast ${input.voteType} vote during phase ${current.phase}`,
+                );
+            }
 
             if (input.voteType === 'verdict') {
+                const validChoices = allowedVerdictChoices(metadata.caseType);
+                if (!validChoices.includes(input.choice)) {
+                    throw new Error(
+                        `Invalid verdict choice: ${input.choice}. Valid choices: ${validChoices.join(', ')}`,
+                    );
+                }
                 metadata.verdictVotes[input.choice] =
                     (metadata.verdictVotes[input.choice] ?? 0) + 1;
             } else {
+                if (!metadata.sentenceOptions.includes(input.choice)) {
+                    throw new Error(
+                        `Invalid sentence choice: ${input.choice}. Valid choices: ${metadata.sentenceOptions.join(', ')}`,
+                    );
+                }
                 metadata.sentenceVotes[input.choice] =
                     (metadata.sentenceVotes[input.choice] ?? 0) + 1;
             }
@@ -578,6 +675,46 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         });
 
         return session;
+    }
+
+    async recordFinalRuling(input: {
+        sessionId: string;
+        verdict: string;
+        sentence: string;
+    }): Promise<CourtSession> {
+        const row = await this.db.begin(async (tx: any) => {
+            const [current] = await tx<SessionRow[]>`
+                SELECT *
+                FROM court_sessions
+                WHERE id = ${input.sessionId}
+                FOR UPDATE
+            `;
+
+            if (!current) {
+                throw new Error(`Session not found: ${input.sessionId}`);
+            }
+
+            const metadata = {
+                ...(current.metadata ?? {}),
+            } as CourtSessionMetadata;
+            metadata.finalRuling = {
+                verdict: input.verdict,
+                sentence: input.sentence,
+                decidedAt: new Date().toISOString(),
+            };
+
+            const [updated] = await tx<SessionRow[]>`
+                UPDATE court_sessions
+                SET metadata = ${tx.json(metadata as unknown as Record<string, unknown>)}
+                WHERE id = ${input.sessionId}
+                RETURNING *
+            `;
+
+            return updated;
+        });
+
+        const turns = await this.fetchTurns(input.sessionId);
+        return this.mapSession(row, turns);
     }
 
     async completeSession(sessionId: string): Promise<CourtSession> {

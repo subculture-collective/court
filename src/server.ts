@@ -163,7 +163,12 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to cast vote';
-            return res.status(404).json({ error: message });
+            const status =
+                message.startsWith('Invalid') ||
+                message.startsWith('Cannot cast') ?
+                    400
+                :   404;
+            return res.status(status).json({ error: message });
         }
     });
 
@@ -188,7 +193,11 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to set phase';
-            return res.status(404).json({ error: message });
+            const status =
+                message.startsWith('Invalid') ?
+                    400
+                :   404;
+            return res.status(status).json({ error: message });
         }
     });
 
