@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: improv-court-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: improv_court
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d improv_court"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: improv-court-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/improv_court
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek/deepseek-chat-v3-0324:free}
+      VERDICT_VOTE_WINDOW_MS: ${VERDICT_VOTE_WINDOW_MS:-20000}
+      SENTENCE_VOTE_WINDOW_MS: ${SENTENCE_VOTE_WINDOW_MS:-20000}
+    ports:
+      - "${API_HOST_PORT:-3001}:3001"
+
+volumes:
+  postgres_data:
