@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Improv Court POC</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --bg: #0a0a0f;
+                --panel: #14141d;
+                --text: #ececf3;
+                --muted: #9da2b6;
+                --accent: #88b4ff;
+                --danger: #ff7b8b;
+                --ok: #6dd3a7;
+            }
+
+            body {
+                margin: 0;
+                background: radial-gradient(circle at top, #1a1a2b, var(--bg));
+                color: var(--text);
+                font-family:
+                    Inter,
+                    ui-sans-serif,
+                    system-ui,
+                    -apple-system,
+                    Segoe UI,
+                    Roboto,
+                    Helvetica,
+                    Arial,
+                    sans-serif;
+            }
+
+            .layout {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 24px;
+                display: grid;
+                grid-template-columns: 2fr 1fr;
+                gap: 16px;
+            }
+
+            .panel {
+                background: color-mix(in srgb, var(--panel) 88%, transparent);
+                border: 1px solid #2b2f41;
+                border-radius: 14px;
+                box-shadow: 0 10px 40px #00000070;
+                padding: 16px;
+            }
+
+            h1, h2, h3 {
+                margin: 0 0 10px;
+            }
+
+            h1 {
+                font-size: 22px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .muted {
+                color: var(--muted);
+                font-size: 13px;
+            }
+
+            .form-row {
+                display: flex;
+                gap: 8px;
+                margin-top: 12px;
+            }
+
+            input,
+            select,
+            button {
+                border-radius: 10px;
+                border: 1px solid #363b53;
+                background: #171a28;
+                color: var(--text);
+                padding: 10px 12px;
+                font-size: 14px;
+            }
+
+            input,
+            select {
+                width: 100%;
+            }
+
+            button {
+                cursor: pointer;
+                transition: 160ms ease;
+            }
+
+            button:hover {
+                transform: translateY(-1px);
+                border-color: var(--accent);
+            }
+
+            .badge {
+                display: inline-flex;
+                padding: 4px 8px;
+                border-radius: 999px;
+                border: 1px solid #3a3f5c;
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .phase {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 12px;
+            }
+
+            #feed {
+                max-height: 60vh;
+                overflow: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                padding-right: 4px;
+            }
+
+            .turn {
+                border-left: 3px solid var(--accent);
+                border-radius: 10px;
+                background: #121624;
+                padding: 10px;
+            }
+
+            .turn .meta {
+                color: var(--muted);
+                font-size: 12px;
+                margin-bottom: 6px;
+            }
+
+            .vote-grid {
+                display: grid;
+                gap: 8px;
+                margin-top: 12px;
+            }
+
+            .vote-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            .vote-actions {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-top: 8px;
+            }
+
+            .ok {
+                color: var(--ok);
+            }
+
+            .danger {
+                color: var(--danger);
+            }
+
+            @media (max-width: 900px) {
+                .layout {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="layout">
+            <section class="panel">
+                <h1>⚖️ Improv Court POC</h1>
+                <p class="muted">
+                    Text-first courtroom flow with multi-agent roles, live transcript, and jury voting.
+                </p>
+
+                <div class="form-row">
+                    <input
+                        id="topic"
+                        placeholder="Case prompt (e.g., Did the defendant weaponize office glitter?)"
+                    />
+                </div>
+                <div class="form-row">
+                    <select id="caseType">
+                        <option value="criminal">Criminal (Guilty / Not Guilty)</option>
+                        <option value="civil">Civil (Liable / Not Liable)</option>
+                    </select>
+                    <button id="startBtn">Start Session</button>
+                </div>
+
+                <hr style="border-color:#2b2f41; opacity:0.6; margin:16px 0;" />
+
+                <div class="phase">
+                    <div>
+                        <h3 style="margin:0;">Live Transcript</h3>
+                        <div class="muted" id="sessionMeta">No session yet.</div>
+                    </div>
+                    <span class="badge" id="phaseBadge">phase: idle</span>
+                </div>
+
+                <div id="feed"></div>
+            </section>
+
+            <aside class="panel">
+                <h2 style="font-size:18px;">Jury Controls</h2>
+                <p class="muted">Vote while polls are open. Tallies update live.</p>
+
+                <div style="margin-top:12px;">
+                    <h3 style="font-size:14px; margin-bottom:6px;">Verdict vote</h3>
+                    <div id="verdictTallies" class="vote-grid"></div>
+                    <div class="vote-actions" id="verdictActions"></div>
+                </div>
+
+                <div style="margin-top:16px;">
+                    <h3 style="font-size:14px; margin-bottom:6px;">Sentence vote</h3>
+                    <div id="sentenceTallies" class="vote-grid"></div>
+                    <div class="vote-actions" id="sentenceActions"></div>
+                </div>
+
+                <div style="margin-top:16px;" class="muted" id="status"></div>
+            </aside>
+        </div>
+
+        <script type="module" src="/app.js"></script>
+    </body>
+</html>
