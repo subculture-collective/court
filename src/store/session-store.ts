@@ -13,6 +13,13 @@ import type {
 } from '../types.js';
 import { runMigrations } from '../db/migrations.js';
 
+export class CourtValidationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'CourtValidationError';
+    }
+}
+
 const PHASE_SEQUENCE: CourtPhase[] = [
     'case_prompt',
     'openings',
@@ -36,7 +43,9 @@ function assertValidPhaseTransition(current: CourtPhase, next: CourtPhase): void
     const skipEvidenceReveal =
         current === 'witness_exam' && next === 'closings';
     if (!isNoop && !isForwardStep && !skipEvidenceReveal) {
-        throw new Error(`Invalid phase transition: ${current} -> ${next}`);
+        throw new CourtValidationError(
+            `Invalid phase transition: ${current} -> ${next}`,
+        );
     }
 }
 
@@ -210,7 +219,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             (input.voteType === 'verdict' && session.phase !== 'verdict_vote') ||
             (input.voteType === 'sentence' && session.phase !== 'sentence_vote')
         ) {
-            throw new Error(
+            throw new CourtValidationError(
                 `Cannot cast ${input.voteType} vote during phase ${session.phase}`,
             );
         }
@@ -218,12 +227,12 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         if (input.voteType === 'verdict') {
             const validChoices = allowedVerdictChoices(session.metadata.caseType);
             if (!validChoices.includes(input.choice)) {
-                throw new Error(
+                throw new CourtValidationError(
                     `Invalid verdict choice: ${input.choice}. Valid choices: ${validChoices.join(', ')}`,
                 );
             }
         } else if (!session.metadata.sentenceOptions.includes(input.choice)) {
-            throw new Error(
+            throw new CourtValidationError(
                 `Invalid sentence choice: ${input.choice}. Valid choices: ${session.metadata.sentenceOptions.join(', ')}`,
             );
         }
@@ -626,7 +635,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 (input.voteType === 'sentence' &&
                     current.phase !== 'sentence_vote')
             ) {
-                throw new Error(
+                throw new CourtValidationError(
                     `Cannot cast ${input.voteType} vote during phase ${current.phase}`,
                 );
             }
@@ -634,7 +643,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             if (input.voteType === 'verdict') {
                 const validChoices = allowedVerdictChoices(metadata.caseType);
                 if (!validChoices.includes(input.choice)) {
-                    throw new Error(
+                    throw new CourtValidationError(
                         `Invalid verdict choice: ${input.choice}. Valid choices: ${validChoices.join(', ')}`,
                     );
                 }
@@ -642,7 +651,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                     (metadata.verdictVotes[input.choice] ?? 0) + 1;
             } else {
                 if (!metadata.sentenceOptions.includes(input.choice)) {
-                    throw new Error(
+                    throw new CourtValidationError(
                         `Invalid sentence choice: ${input.choice}. Valid choices: ${metadata.sentenceOptions.join(', ')}`,
                     );
                 }
