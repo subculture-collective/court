@@ -239,25 +239,25 @@ Turns are cascade-deleted when their parent session is deleted.
 
 ## 9 — Live operations control loop (startup → showtime → shutdown)
 
-Use this section during real shows. Dashboard/alert references come from:
+Use this section during real shows. Dashboard/alert configuration details are documented in `docs/ops-runbook.md`:
 
-- `ops/dashboards/runtime-health.dashboard.json`
-- `ops/alerts/thresholds.json`
+- Section 2 — Runtime health dashboard SQL panels
+- Section 3 — Alert thresholds and routing
 
-### 9.1 Startup checklist (T-30 to T-5)
+### 9.1 Startup checklist (T-30 minutes to T-5 minutes before show start)
 
 1. **Environment sanity**
   - Confirm `OPENROUTER_API_KEY` present for live mode (or `LLM_MOCK=true` for rehearsal).
   - Confirm vote windows and token/recap knobs are set for this show.
 2. **System readiness**
   - Confirm `GET /api/health` is green.
-  - Confirm dashboard panel `stream_and_api_health` is healthy.
+  - Confirm API health probe (hard-down threshold from `docs/ops-runbook.md` Section 3) is passing.
 3. **Dry session smoke**
   - Create one session and verify SSE stream connects.
-  - Confirm panel movement in:
-    - `session_completion_rate_15m`
-    - `vote_latency_p95_10m`
-    - `moderation_events_15m`
+  - Confirm metric movement in:
+    - SLI A — Session completion rate (`docs/ops-runbook.md` Section 2)
+    - SLI B — Vote API latency p95 (`docs/ops-runbook.md` Section 2)
+    - SLI C — Moderation events per 15m (`docs/ops-runbook.md` Section 2)
 4. **Alert routing check**
   - Validate pager/notification channel receives one test alert payload.
   - Verify alert payload contains runbook link back to this document.
@@ -266,9 +266,9 @@ Use this section during real shows. Dashboard/alert references come from:
 
 Every 2–3 minutes, check:
 
-- `stream_and_api_health` stat remains stable.
-- `vote_latency_p95_10m` remains below threshold.
-- `moderation_events_15m` does not trend toward spike conditions.
+- API health probe remains passing (no consecutive failures).
+- SLI B — Vote API latency p95 remains below 1.5s threshold.
+- SLI C — Moderation events per 15m does not trend toward spike conditions.
 - Active session progresses through phases (watch `phase_changed` events).
 
 Operator controls available during live session:
@@ -290,28 +290,28 @@ Operator controls available during live session:
 
 ### Scenario A — API hard down
 
-- **Detection:** Alert `api_hard_down` (metric `api_health_consecutive_failures >= 3`), plus panel `stream_and_api_health` collapse.
+- **Detection:** Hard-down threshold: `/api/health` probe fails 3 consecutive checks (see `docs/ops-runbook.md` Section 3), plus loss of API responses.
 - **Immediate action:** Restart API service, confirm `/api/health` recovery.
 - **Recovery validation:** Create a new session; verify stream connect and vote endpoint response.
 - **Escalation trigger:** If health remains failing > 5 minutes, declare incident and page engineering lead.
 
 ### Scenario B — Stream connectivity degraded
 
-- **Detection:** Alert `stream_connectivity_degraded` and falling stream success ratio.
+- **Detection:** Falling stream success ratio; SSE clients unable to connect or receive events.
 - **Immediate action:** Verify SSE endpoint connectivity for a fresh session ID and active one.
 - **Recovery validation:** Observe stream reconnection and resumed phase/tally updates.
 - **Escalation trigger:** If degradation persists > 10 minutes, switch to fallback broadcast messaging.
 
 ### Scenario C — Moderation storm
 
-- **Detection:** Alert `moderation_spike` and elevated `moderation_events_15m`.
+- **Detection:** Moderation spike threshold: SLI C > 20 in 15 minutes (see `docs/ops-runbook.md` Section 3).
 - **Immediate action:** Announce stricter decorum reminder; continue with moderated redaction behavior.
 - **Recovery validation:** Confirm moderation count trends down and no safety regressions.
 - **Escalation trigger:** If unsafe content persists across multiple rounds, pause session and move to mistrial fallback.
 
 ### Scenario D — Vote latency regression
 
-- **Detection:** Alert `vote_latency_high` with p95 above 1.5s.
+- **Detection:** Vote latency high threshold: SLI B p95 > 1.5s for 10 minutes (see `docs/ops-runbook.md` Section 3).
 - **Immediate action:** Pause launching new sessions; keep current poll open long enough for fairness.
 - **Recovery validation:** p95 returns under threshold and vote submissions succeed within expected latency.
 - **Escalation trigger:** If p95 remains high for > 15 minutes, reduce traffic and investigate infrastructure bottleneck.
@@ -391,21 +391,28 @@ Patches applied in this runbook revision:
 
 ---
 
-## 14 — Viewer onboarding/catch-up panel operations
+## Appendix A — Planned features (not yet implemented)
 
-The viewer UI includes a compact **Case so far** panel with:
+### A.1 — Viewer onboarding/catch-up panel operations
+
+> **NOTE:** This feature is **planned but not yet implemented**. It is tracked in
+> `docs/phase5-6-implementation-plan.md` as issue **#34: Onboarding/catch-up
+> panel for new viewers**. The following operational notes are **forward-looking**
+> and should not be used for current production runs.
+
+The viewer UI is expected to include a compact **Case so far** panel with:
 
 - Current phase + jury step status
 - Recap-aware summary (latest recap preferred, otherwise recent turns)
 - Toggle (`Hide`/`Show`) for compact viewing
 
-Operator expectations:
+Operator expectations (once implemented):
 
 1. On phase changes, confirm panel meta updates to the new phase/jury step.
 2. During reconnect events, confirm the panel rebuilds from snapshot state.
 3. If viewers report confusion, keep panel visible and issue a manual emergency recap if needed.
 
-Telemetry note:
+Telemetry note (planned):
 
 - Catch-up toggle telemetry is aggregate-only and logged as
   `[telemetry] catchup_panel_visibility ...` (no user/session identifiers).
