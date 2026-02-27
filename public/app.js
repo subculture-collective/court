@@ -9,9 +9,13 @@ const sentenceTallies = document.getElementById('sentenceTallies');
 const verdictActions = document.getElementById('verdictActions');
 const sentenceActions = document.getElementById('sentenceActions');
 const statusEl = document.getElementById('status');
+const phaseTimer = document.getElementById('phaseTimer');
+const activeSpeakerEl = document.getElementById('activeSpeaker');
+const captionLineEl = document.getElementById('captionLine');
 
 let activeSession = null;
 let source = null;
+let timerInterval = null;
 
 function setStatus(message, type = 'ok') {
     statusEl.textContent = message;
@@ -32,11 +36,14 @@ function appendTurn(turn) {
     item.append(meta, body);
     feed.appendChild(item);
     feed.scrollTop = feed.scrollHeight;
+    activeSpeakerEl.textContent = `${turn.role} · ${turn.speaker}`;
+    captionLineEl.textContent = turn.dialogue;
 }
 
 function renderTally(container, map) {
     container.innerHTML = '';
     const entries = Object.entries(map || {});
+    const totalVotes = entries.reduce((sum, [, count]) => sum + Number(count), 0);
     if (entries.length === 0) {
         const row = document.createElement('div');
         row.className = 'vote-row';
@@ -48,7 +55,16 @@ function renderTally(container, map) {
     for (const [choice, count] of entries) {
         const row = document.createElement('div');
         row.className = 'vote-row';
-        row.textContent = `${choice}: ${count}`;
+        const ratio = totalVotes > 0 ? Number(count) / totalVotes : 0;
+        const percent = Math.round(ratio * 100);
+        row.textContent = `${choice}: ${count} (${percent}%)`;
+        const bar = document.createElement('div');
+        bar.className = 'vote-bar';
+        const fill = document.createElement('div');
+        fill.className = 'vote-bar-fill';
+        fill.style.width = `${percent}%`;
+        bar.appendChild(fill);
+        row.appendChild(bar);
         container.appendChild(row);
     }
 }
@@ -87,6 +103,7 @@ function renderActions(session) {
         const button = document.createElement('button');
         button.textContent = option;
         button.onclick = () => castVote('verdict', option);
+        button.disabled = session.phase !== 'verdict_vote';
         verdictActions.appendChild(button);
     }
 
@@ -94,8 +111,41 @@ function renderActions(session) {
         const button = document.createElement('button');
         button.textContent = option;
         button.onclick = () => castVote('sentence', option);
+        button.disabled = session.phase !== 'sentence_vote';
         sentenceActions.appendChild(button);
     }
+}
+
+function updateTimer(phaseStartedAt, phaseDurationMs) {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+
+    if (!phaseStartedAt || !phaseDurationMs) {
+        phaseTimer.textContent = '--:--';
+        return;
+    }
+
+    const started = Date.parse(phaseStartedAt);
+    const tick = () => {
+        const elapsed = Date.now() - started;
+        const remaining = Math.max(0, phaseDurationMs - elapsed);
+        const minutes = Math.floor(remaining / 60000)
+            .toString()
+            .padStart(2, '0');
+        const seconds = Math.floor((remaining % 60000) / 1000)
+            .toString()
+            .padStart(2, '0');
+        phaseTimer.textContent = `${minutes}:${seconds}`;
+        if (remaining <= 0 && timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    };
+
+    tick();
+    timerInterval = setInterval(tick, 250);
 }
 
 function connectStream(sessionId) {
@@ -114,9 +164,17 @@ function connectStream(sessionId) {
             activeSession = session;
             phaseBadge.textContent = `phase: ${session.phase}`;
             sessionMeta.textContent = `${session.id} · ${session.status}`;
+            updateTimer(
+                session.metadata.phaseStartedAt,
+                session.metadata.phaseDurationMs,
+            );
 
             feed.innerHTML = '';
             turns.forEach(appendTurn);
+            if (turns.length === 0) {
+                activeSpeakerEl.textContent = 'Waiting for first turn…';
+                captionLineEl.textContent = 'Captions will appear here.';
+            }
             renderTally(verdictTallies, verdictVotes);
             renderTally(sentenceTallies, sentenceVotes);
             renderActions(session);
@@ -129,7 +187,19 @@ function connectStream(sessionId) {
         }
 
         if (payload.type === 'phase_changed') {
+            if (activeSession) {
+                activeSession.phase = payload.payload.phase;
+                activeSession.metadata.phaseStartedAt =
+                    payload.payload.phaseStartedAt;
+                activeSession.metadata.phaseDurationMs =
+                    payload.payload.phaseDurationMs;
+                renderActions(activeSession);
+            }
             phaseBadge.textContent = `phase: ${payload.payload.phase}`;
+            updateTimer(
+                payload.payload.phaseStartedAt,
+                payload.payload.phaseDurationMs,
+            );
             return;
         }
 
@@ -141,10 +211,21 @@ function connectStream(sessionId) {
 
         if (payload.type === 'session_completed') {
             setStatus('Session complete. Verdict delivered.');
+            updateTimer();
         }
 
         if (payload.type === 'session_failed') {
             setStatus(`Session failed: ${payload.payload.reason}`, 'error');
+            updateTimer();
+        }
+
+        if (payload.type === 'analytics_event') {
+            if (payload.payload.name === 'poll_started') {
+                setStatus(`${payload.payload.pollType} poll started.`);
+            }
+            if (payload.payload.name === 'poll_closed') {
+                setStatus(`${payload.payload.pollType} poll closed.`);
+            }
         }
     };
 
@@ -184,6 +265,10 @@ startBtn.onclick = async () => {
     renderTally(verdictTallies, activeSession.metadata.verdictVotes);
     renderTally(sentenceTallies, activeSession.metadata.sentenceVotes);
     renderActions(activeSession);
+    updateTimer(
+        activeSession.metadata.phaseStartedAt,
+        activeSession.metadata.phaseDurationMs,
+    );
     connectStream(activeSession.id);
     setStatus('Session started. Court is now in session.');
 };

@@ -116,6 +116,46 @@ test('rejects unknown phase values', async () => {
     );
 });
 
+test('emits analytics events for poll lifecycle and vote completion', async () => {
+    const { store, sessionId } = await createRunningSession();
+    const analyticsNames: string[] = [];
+    const unsubscribe = store.subscribe(sessionId, event => {
+        if (event.type === 'analytics_event') {
+            analyticsNames.push(String(event.payload.name));
+        }
+    });
+
+    try {
+        await store.setPhase(sessionId, 'openings');
+        await store.setPhase(sessionId, 'witness_exam');
+        await store.setPhase(sessionId, 'closings');
+        await store.setPhase(sessionId, 'verdict_vote');
+        await store.castVote({
+            sessionId,
+            voteType: 'verdict',
+            choice: 'guilty',
+        });
+        await store.setPhase(sessionId, 'sentence_vote');
+        await store.castVote({
+            sessionId,
+            voteType: 'sentence',
+            choice: 'Fine',
+        });
+        await store.setPhase(sessionId, 'final_ruling');
+    } finally {
+        unsubscribe();
+    }
+
+    assert.deepEqual(analyticsNames, [
+        'poll_started',
+        'vote_completed',
+        'poll_closed',
+        'poll_started',
+        'vote_completed',
+        'poll_closed',
+    ]);
+});
+
 test(
     'postgres store persists final ruling when TEST_DATABASE_URL is provided',
     { skip: !process.env.TEST_DATABASE_URL },
