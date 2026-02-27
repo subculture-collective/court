@@ -2,7 +2,11 @@ import { AGENTS } from '../agents.js';
 import { llmGenerate, sanitizeDialogue } from '../llm/client.js';
 import { moderateContent } from '../moderation/content-filter.js';
 import { createTTSAdapterFromEnv, type TTSAdapter } from '../tts/adapter.js';
-import { applyWitnessCap, resolveWitnessCapConfig } from './witness-caps.js';
+import {
+    applyWitnessCap,
+    effectiveTokenLimit,
+    resolveWitnessCapConfig,
+} from './witness-caps.js';
 import type { WitnessCapConfig } from './witness-caps.js';
 import type {
     AgentId,
@@ -252,7 +256,10 @@ export async function runCourtSession(
                 role: `witness_${Math.min(index + 1, 3)}` as CourtRole,
                 userInstruction:
                     'Provide testimony in 1-3 sentences with one concrete detail and one comedic detail.',
-                maxTokens: Math.min(260, witnessCapConfig.maxTokens),
+                maxTokens: Math.min(
+                    260,
+                    effectiveTokenLimit(witnessCapConfig).limit ?? 260,
+                ),
                 capConfig: witnessCapConfig,
             });
             await pause(600);

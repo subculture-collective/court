@@ -24,10 +24,20 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
         setMessage(null);
 
         try {
-            const response = await fetch(`/api/session/${action}`, {
+            let url: string;
+            let body: Record<string, unknown> = data || {};
+
+            if (action === 'advance-phase') {
+                url = `/api/court/sessions/${sessionId}/phase`;
+                body = { phase: data?.targetPhase };
+            } else {
+                url = `/api/court/sessions/${sessionId}/${action}`;
+            }
+
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data || {}),
+                body: JSON.stringify(body),
             });
 
             if (!response.ok) {
@@ -50,9 +60,10 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
         setMessage(null);
 
         try {
-            const response = await fetch('/api/session', {
+            const response = await fetch('/api/court/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic: 'Operator-created session' }),
             });
 
             if (!response.ok) {
@@ -62,9 +73,10 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
             }
 
             const data = await response.json();
+            const sessionId = data.session?.id ?? data.sessionId;
             setMessage({
                 type: 'success',
-                text: `New session created: ${data.sessionId}`,
+                text: `New session created: ${sessionId}`,
             });
 
             // Reload page to connect to new session
@@ -127,23 +139,23 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
                     <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
                         {[
                             {
-                                phase: 'WITNESS_1',
-                                label: 'Start Witness 1',
+                                phase: 'witness_exam',
+                                label: 'Start Witness Exam',
                                 emoji: '👤',
                             },
                             {
-                                phase: 'WITNESS_2',
-                                label: 'Start Witness 2',
-                                emoji: '👥',
-                            },
-                            {
-                                phase: 'DELIBERATION',
-                                label: 'Start Deliberation',
+                                phase: 'closings',
+                                label: 'Start Closings',
                                 emoji: '⚖️',
                             },
                             {
-                                phase: 'VERDICT',
-                                label: 'Start Verdict',
+                                phase: 'verdict_vote',
+                                label: 'Start Verdict Vote',
+                                emoji: '🗳️',
+                            },
+                            {
+                                phase: 'final_ruling',
+                                label: 'Final Ruling',
                                 emoji: '📜',
                             },
                         ].map(({ phase, label, emoji }) => (
