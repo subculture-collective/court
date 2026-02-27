@@ -56,6 +56,10 @@ Rollback trial checklist (verify once per release candidate):
 
 Use these as dashboard panels (SQL via Postgres + synthetic HTTP check):
 
+Source-of-truth dashboard artifact:
+
+- `ops/dashboards/runtime-health.dashboard.json`
+
 ### SLI A — Session completion rate (15m)
 
 ```sql
@@ -104,6 +108,19 @@ WHERE created_at >= NOW() - INTERVAL '15 minutes'
 - **Moderation spike**: alert if SLI C `> 20` in 15 minutes.
 - **Hard-down**: alert immediately if `/api/health` probe fails 3 consecutive checks.
 
+Source-of-truth alert artifacts:
+
+- `ops/alerts/thresholds.json`
+- `ops/alerts/synthetic-scenarios.json`
+
+### 3.1 Synthetic alert validation
+
+Run the synthetic scenario test before each staging release candidate:
+
+1. `npm run test:ops`
+2. Confirm each scenario in `ops/alerts/synthetic-scenarios.json` matches expected triggered alerts.
+3. If thresholds change, update both `ops/alerts/thresholds.json` and synthetic scenarios in the same PR.
+
 ## 4) Incident response + recovery drill
 
 Run monthly in staging:
@@ -114,7 +131,8 @@ Run monthly in staging:
 4. Verify recovery:
    - `/api/health` returns success.
    - New sessions can be created.
-   - Existing interrupted running sessions are marked `failed` with `failure_reason='Interrupted by server restart'` (set by `recoverInterruptedSessions` in `src/store/session-store.ts`).
+   - Existing interrupted `running` sessions are resumed automatically when using Postgres-backed storage (`recoverInterruptedSessions` returns IDs for restart).
+   - With in-memory storage, interrupted sessions are not recoverable across process restarts.
 5. Simulate DB interruption: `docker compose stop db` (wait 30s) then `docker compose start db`.
 6. Confirm API health returns after DB health check passes.
 7. Record drill timestamp, operator, and outcome in team incident log.
