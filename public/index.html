@@ -173,6 +173,34 @@
                 text-shadow: 0 0 12px #88b4ff66;
             }
 
+            .catchup-shell {
+                margin-bottom: 12px;
+                border: 1px solid #2b2f41;
+                border-radius: 12px;
+                padding: 10px;
+                background: #121624;
+                display: grid;
+                gap: 8px;
+            }
+
+            .catchup-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .catchup-summary {
+                font-size: 13px;
+                color: var(--text);
+                line-height: 1.4;
+            }
+
+            .catchup-meta {
+                font-size: 12px;
+                color: var(--muted);
+            }
+
             .loading {
                 opacity: 0.65;
                 cursor: wait;
@@ -366,6 +394,23 @@
                         <span id="activeSpeaker">Waiting for first turn…</span>
                     </div>
                     <div id="captionLine">Captions will appear here.</div>
+                </div>
+
+                <div class="catchup-shell">
+                    <div class="catchup-header">
+                        <h3 style="margin: 0; font-size: 14px">🧭 Case so far</h3>
+                        <button id="catchupToggle" type="button" class="badge" aria-expanded="true">
+                            Hide
+                        </button>
+                    </div>
+                    <div id="catchupBody">
+                        <div id="catchupSummary" class="catchup-summary">
+                            Waiting for opening statements…
+                        </div>
+                        <div id="catchupMeta" class="catchup-meta">
+                            phase: idle · Jury pending
+                        </div>
+                    </div>
                 </div>
 
                 <div id="feed"></div>
