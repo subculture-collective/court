@@ -10,6 +10,7 @@ import {
     CourtValidationError,
     createCourtSessionStore,
 } from './store/session-store.js';
+import { VoteSpamGuard } from './moderation/vote-spam.js';
 import type { AgentId, CaseType, CourtPhase } from './types.js';
 
 const validPhases: CourtPhase[] = [
@@ -39,6 +40,11 @@ async function bootstrap(): Promise<void> {
         process.env.SENTENCE_VOTE_WINDOW_MS ?? '20000',
         10,
     );
+
+    const voteSpamGuard = new VoteSpamGuard();
+    const PRUNE_INTERVAL_MS = 60_000;
+    const pruneTimer = setInterval(() => voteSpamGuard.prune(), PRUNE_INTERVAL_MS);
+    pruneTimer.unref();
 
     app.use(express.json());
     app.use(express.static(publicDir));
@@ -150,6 +156,21 @@ async function bootstrap(): Promise<void> {
 
         if (!choice) {
             return res.status(400).json({ error: 'choice is required' });
+        }
+
+        const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+        if (!voteSpamGuard.check(req.params.id, clientIp)) {
+            // eslint-disable-next-line no-console
+            console.warn(
+                `[vote-spam] blocked ip=${clientIp} session=${req.params.id}`,
+            );
+            store.emitEvent(req.params.id, 'vote_spam_blocked', {
+                ip: clientIp,
+                voteType,
+            });
+            return res
+                .status(429)
+                .json({ error: 'Too many votes. Please slow down.' });
         }
 
         try {
