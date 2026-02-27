@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "1.0",
+  "alerts": [
+    {
+      "id": "session_completion_rate_low",
+      "title": "Session completion rate below target",
+      "severity": "warning",
+      "metric": "session_completion_rate_pct",
+      "comparator": "<",
+      "threshold": 95,
+      "windowMinutes": 15,
+      "runbook": "docs/ops-runbook.md#3-alert-thresholds"
+    },
+    {
+      "id": "vote_latency_high",
+      "title": "Vote API latency p95 high",
+      "severity": "warning",
+      "metric": "vote_latency_p95_seconds",
+      "comparator": ">",
+      "threshold": 1.5,
+      "windowMinutes": 10,
+      "runbook": "docs/ops-runbook.md#3-alert-thresholds"
+    },
+    {
+      "id": "moderation_spike",
+      "title": "Moderation event spike detected",
+      "severity": "warning",
+      "metric": "moderation_events_15m",
+      "comparator": ">",
+      "threshold": 20,
+      "windowMinutes": 15,
+      "runbook": "docs/ops-runbook.md#3-alert-thresholds"
+    },
+    {
+      "id": "api_hard_down",
+      "title": "API health endpoint failing",
+      "severity": "critical",
+      "metric": "api_health_consecutive_failures",
+      "comparator": ">=",
+      "threshold": 3,
+      "windowMinutes": 1,
+      "runbook": "docs/ops-runbook.md#4-incident-response--recovery-drill"
+    },
+    {
+      "id": "stream_connectivity_degraded",
+      "title": "SSE stream connectivity degraded",
+      "severity": "warning",
+      "metric": "stream_connect_success_ratio",
+      "comparator": "<",
+      "threshold": 0.9,
+      "windowMinutes": 5,
+      "runbook": "docs/ops-runbook.md#4-incident-response--recovery-drill"
+    }
+  ]
+}

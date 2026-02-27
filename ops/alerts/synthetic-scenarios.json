@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "1.0",
+  "scenarios": [
+    {
+      "id": "healthy_baseline",
+      "description": "All metrics within expected SLO proxy boundaries.",
+      "metrics": {
+        "session_completion_rate_pct": 99.2,
+        "vote_latency_p95_seconds": 0.62,
+        "moderation_events_15m": 2,
+        "api_health_consecutive_failures": 0,
+        "stream_connect_success_ratio": 0.99
+      },
+      "expectedTriggered": []
+    },
+    {
+      "id": "completion_drop_and_latency_rise",
+      "description": "Completion drops while vote latency regresses.",
+      "metrics": {
+        "session_completion_rate_pct": 92.0,
+        "vote_latency_p95_seconds": 1.92,
+        "moderation_events_15m": 5,
+        "api_health_consecutive_failures": 0,
+        "stream_connect_success_ratio": 0.97
+      },
+      "expectedTriggered": [
+        "session_completion_rate_low",
+        "vote_latency_high"
+      ]
+    },
+    {
+      "id": "moderation_storm",
+      "description": "Redaction throughput spikes sharply.",
+      "metrics": {
+        "session_completion_rate_pct": 98.5,
+        "vote_latency_p95_seconds": 0.9,
+        "moderation_events_15m": 27,
+        "api_health_consecutive_failures": 0,
+        "stream_connect_success_ratio": 0.96
+      },
+      "expectedTriggered": ["moderation_spike"]
+    },
+    {
+      "id": "api_outage_and_stream_degradation",
+      "description": "Health checks fail repeatedly and stream reliability drops.",
+      "metrics": {
+        "session_completion_rate_pct": 97.1,
+        "vote_latency_p95_seconds": 1.0,
+        "moderation_events_15m": 3,
+        "api_health_consecutive_failures": 3,
+        "stream_connect_success_ratio": 0.73
+      },
+      "expectedTriggered": [
+        "api_hard_down",
+        "stream_connectivity_degraded"
+      ]
+    }
+  ]
+}

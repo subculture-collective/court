@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "1.0",
+  "dashboardId": "improv-court-runtime-health",
+  "title": "Improv Court Runtime Health",
+  "description": "Core SLI/SLO proxy panels for Phase 5 operations readiness.",
+  "datasources": {
+    "postgres": "court",
+    "synthetic": "staging-probes"
+  },
+  "panels": [
+    {
+      "id": "session_completion_rate_15m",
+      "title": "Session completion rate (15m)",
+      "type": "timeseries",
+      "unit": "percent",
+      "eventTaxonomyRefs": ["session_completed", "session_failed"],
+      "query": "SELECT\n  COALESCE(\n    ROUND(\n      100.0 * SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)::numeric\n      / NULLIF(COUNT(*), 0),\n      2\n    ),\n    100.00\n  ) AS session_completion_rate_pct\nFROM court_sessions\nWHERE created_at >= NOW() - INTERVAL '15 minutes';"
+    },
+    {
+      "id": "vote_latency_p95_10m",
+      "title": "Vote API latency p95 (10m)",
+      "type": "timeseries",
+      "unit": "seconds",
+      "eventTaxonomyRefs": ["analytics_event.vote_completed"],
+      "probe": {
+        "method": "POST",
+        "pathTemplate": "/api/court/sessions/<session-id>/vote",
+        "body": { "type": "verdict", "choice": "guilty" },
+        "aggregation": "p95",
+        "windowMinutes": 10
+      }
+    },
+    {
+      "id": "moderation_events_15m",
+      "title": "Moderation events (15m)",
+      "type": "timeseries",
+      "unit": "count",
+      "eventTaxonomyRefs": ["moderation_action"],
+      "query": "SELECT COUNT(*) AS moderation_events_15m\nFROM court_turns\nWHERE created_at >= NOW() - INTERVAL '15 minutes'\n  AND dialogue = '[The witness statement has been redacted by the court for decorum violations.]';"
+    },
+    {
+      "id": "stream_and_api_health",
+      "title": "Stream/API health",
+      "type": "stat",
+      "unit": "ratio",
+      "eventTaxonomyRefs": ["session_started", "phase_changed", "session_failed"],
+      "probes": [
+        {
+          "name": "api_health_success_ratio",
+          "method": "GET",
+          "path": "/api/health",
+          "aggregation": "success_ratio",
+          "windowMinutes": 5
+        },
+        {
+          "name": "stream_connect_success_ratio",
+          "method": "GET",
+          "pathTemplate": "/api/court/sessions/<session-id>/stream",
+          "aggregation": "success_ratio",
+          "windowMinutes": 5
+        }
+      ]
+    }
+  ]
+}
