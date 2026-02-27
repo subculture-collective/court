@@ -295,8 +295,8 @@ Every SSE payload is a `CourtEvent`:
 | `vote_closed`             | Transitioned away from a vote phase; includes frozen tally snapshot | `pollType`, `closedAt`, `votes`, `nextPhase`                                |
 | `witness_response_capped` | Witness response was truncated due to caps                          | `turnId`, `speaker`, `phase`, `originalLength`, `truncatedLength`, `reason` |
 | `judge_recap_emitted`     | Judge recap emitted during witness exam                             | `turnId`, `phase`, `cycleNumber`                                            |
-| `token_budget_applied`    | Per-role token budget applied to generated turn                     | `turnId`, `role`, `requestedMaxTokens`, `appliedMaxTokens`, `source`        |
-| `session_token_estimate`  | Cumulative session token/cost estimate updated                      | `turnId`, `cumulativeEstimatedTokens`, `estimatedCostUsd`                    |
+| `token_budget_applied`    | Per-role token budget applied to generated turn                     | `turnId`, `speaker`, `role`, `phase`, `requestedMaxTokens`, `appliedMaxTokens`, `roleMaxTokens`, `source` |
+| `session_token_estimate`  | Cumulative session token/cost estimate updated                      | `turnId`, `role`, `phase`, `estimatedPromptTokens`, `estimatedCompletionTokens`, `cumulativeEstimatedTokens`, `costPer1kTokensUsd`, `estimatedCostUsd` |
 | `analytics_event`         | Poll open/close lifecycle events                                    | `event`, `phase`                                                            |
 | `moderation_action`       | Turn content was flagged and redacted                               | `speaker`, `reasons`                                                        |
 | `vote_spam_blocked`       | Vote rejected due to rate limiting or duplicate detection           | `ip`, `voteType`, `reason`, `retryAfterMs`                                  |
