@@ -2,7 +2,7 @@
 
 ## 1) Repeatable staging deployment (Docker-first)
 
-Run from `/home/runner/work/court/court`:
+Run from the project root directory:
 
 1. Prepare env values:
    - `cp .env.example .env`
@@ -31,6 +31,7 @@ Use these as dashboard panels (SQL via Postgres + synthetic HTTP check):
 
 ```sql
 SELECT
+  -- 100.0 converts completion fraction to percentage.
   COALESCE(
     ROUND(
       100.0 * SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)::numeric
@@ -58,6 +59,7 @@ curl -s -o /dev/null -w "%{time_total}\n" \
 ### SLI C — Moderation events per 15m
 
 Moderation is persisted as redacted dialogue turns. Track count of redacted turns:
+the placeholder must match `REDACTED_PLACEHOLDER` in `src/moderation/content-filter.ts`.
 
 ```sql
 SELECT COUNT(*) AS moderation_events_15m
@@ -83,7 +85,7 @@ Run monthly in staging:
 4. Verify recovery:
    - `/api/health` returns success.
    - New sessions can be created.
-   - Existing interrupted running sessions are marked failed with a restart reason (expected behavior from recovery logic).
+   - Existing interrupted running sessions are marked `failed` with `failure_reason='Interrupted by server restart'` (set by `recoverInterruptedSessions` in `src/store/session-store.ts`).
 5. Simulate DB interruption: `docker compose stop db` (wait 30s) then `docker compose start db`.
 6. Confirm API health returns after DB health check passes.
 7. Record drill timestamp, operator, and outcome in team incident log.

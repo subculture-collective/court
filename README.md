@@ -83,7 +83,7 @@ If you need host access to Postgres, add a `ports` mapping to the `db` service i
 
 ## Operations runbook (staging)
 
-See `/home/runner/work/court/court/docs/ops-runbook.md` for the repeatable staging deploy path, core SLI dashboard definitions, alert thresholds, and incident drill/recovery steps.
+See `docs/ops-runbook.md` for the repeatable staging deploy path, core SLI dashboard definitions, alert thresholds, and incident drill/recovery steps.
 
 ## API
 
