@@ -29,6 +29,10 @@ services:
             DATABASE_URL: postgresql://postgres:postgres@db:5432/improv_court
             OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
             LLM_MODEL: ${LLM_MODEL:-deepseek/deepseek-chat-v3-0324:free}
+            LLM_MOCK: ${LLM_MOCK:-false}
+            LOG_LEVEL: ${LOG_LEVEL:-info}
+            TTS_PROVIDER: ${TTS_PROVIDER:-noop}
+            BROADCAST_PROVIDER: ${BROADCAST_PROVIDER:-noop}
             VERDICT_VOTE_WINDOW_MS: ${VERDICT_VOTE_WINDOW_MS:-20000}
             SENTENCE_VOTE_WINDOW_MS: ${SENTENCE_VOTE_WINDOW_MS:-20000}
         ports:

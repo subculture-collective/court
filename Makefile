@@ -10,7 +10,7 @@ SHELL := /usr/bin/env bash
 NPM ?= npm
 DOCKER_COMPOSE ?= docker compose
 
-.PHONY: help install dev dev-dashboard lint build build-dashboard test test-spec ci start migrate migrate-dist docker-up docker-down docker-restart clean status
+.PHONY: help install dev dev-dashboard lint build build-dashboard test test-spec ci smoke-staging start migrate migrate-dist docker-up docker-down docker-restart clean status
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"; printf "\nImprov Court Make targets:\n\n"} /^[a-zA-Z0-9_.-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 } END { printf "\n" }' $(MAKEFILE_LIST)
@@ -43,6 +43,9 @@ ci: ## Run local CI parity checks (lint + build + test)
 	$(MAKE) lint
 	$(MAKE) build
 	$(MAKE) test
+
+smoke-staging: ## Run staging smoke checks against a running API instance
+	$(NPM) run smoke:staging
 
 start: ## Run compiled app from dist/
 	$(NPM) run start
