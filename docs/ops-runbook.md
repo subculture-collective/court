@@ -1,4 +1,4 @@
-# Improv Court staging deploy + ops runbook
+# JuryRigged staging deploy + ops runbook
 
 ## 1) Repeatable staging deployment (Docker-first)
 
@@ -12,7 +12,7 @@ Run from the project root directory:
    - `npm run docker:up`
 3. Verify runtime health:
    - `curl -fsS http://localhost:${API_HOST_PORT:-3001}/api/health`
-   - Expected response: `{"ok":true,"service":"improv-court-poc"}`
+  - Expected response: `{"ok":true,"service":"juryrigged"}`
 4. Optional migration-only verification:
    - `docker compose exec api npm run migrate:dist`
 

@@ -103,7 +103,7 @@ describe('Vote Lifecycle Integration', () => {
             topic: 'Test case for vote phase gating',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -162,7 +162,7 @@ describe('Vote Lifecycle Integration', () => {
             topic: 'Test case for vote accumulation',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -223,7 +223,7 @@ describe('Vote Lifecycle Integration', () => {
             topic: 'Test case for vote events',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -275,7 +275,7 @@ describe('Vote Lifecycle Integration', () => {
             topic: 'Test case for invalid choices',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -321,7 +321,7 @@ describe('Vote Lifecycle Integration', () => {
             topic: 'Test case for invalid sentence',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -368,7 +368,7 @@ describe('Vote Lifecycle Integration', () => {
             topic: 'Test case for sentence voting',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case',
                 caseType: 'criminal',
                 roleAssignments: {

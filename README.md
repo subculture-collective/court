@@ -1,137 +1,162 @@
-# Improv Court POC (standalone)
+# JuryRigged
 
 [![CI](https://github.com/subculture-collective/court/actions/workflows/ci.yml/badge.svg)](https://github.com/subculture-collective/court/actions/workflows/ci.yml)
 
-This is a **standalone root-level implementation** of the Improv Court proof of concept.
-It does **not** depend on `subcult-corp` at runtime.
+JuryRigged is a real-time, multi-agent courtroom simulation.
+An Express API orchestrates agent dialogue across deterministic phases, streams live events via Server-Sent Events (SSE), and supports jury voting for verdict and sentence outcomes.
 
-## Documentation
+This repository is standalone and does not require `subcult-corp` at runtime.
 
-| Document                                                                               | Description                                                                            |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [docs/ADR-001-improv-court-architecture.md](docs/ADR-001-improv-court-architecture.md) | Architecture Decision Record: runtime boundaries, data contracts, and phase invariants |
-| [docs/architecture.md](docs/architecture.md)                                           | System architecture, agent roles, and phase flow                                       |
-| [docs/api.md](docs/api.md)                                                             | REST API endpoints, schemas, and SSE event contracts                                   |
-| [docs/operator-runbook.md](docs/operator-runbook.md)                                   | Setup, live controls, incident response, mistrial fallback, and operational monitoring |
-| [docs/moderation-playbook.md](docs/moderation-playbook.md)                             | Content moderation system and incident procedures                                      |
-| [docs/event-taxonomy.md](docs/event-taxonomy.md)                                       | Canonical event taxonomy, payload schemas, and logging guidelines                      |
-| [docs/phase5-6-implementation-plan.md](docs/phase5-6-implementation-plan.md)           | Dependency-ordered implementation plan for roadmap phases 5 and 6                      |
+## Highlights
 
-## What is implemented
+- Multi-agent role orchestration (judge, prosecutor, defense, witnesses, bailiff)
+- Strict, forward-only phase progression:
+  - `case_prompt` → `openings` → `witness_exam` → `evidence_reveal` → `closings` → `verdict_vote` → `sentence_vote` → `final_ruling`
+  - Optional skip: `witness_exam` → `closings`
+- Live per-session SSE stream (`/api/court/sessions/:id/stream`)
+- Jury voting APIs with phase gating + anti-spam/rate-limiting
+- Main viewer UI (`public/`) and React operator dashboard (`/operator`)
+- In-memory or Postgres-backed persistence (auto-selected by `DATABASE_URL`)
+- Optional broadcast hook integration (`noop` or `obs`) for production workflows
 
-- Multi-agent courtroom roles (judge, prosecutor, defense, witnesses, bailiff)
-- Phase-based court flow:
-    - `case_prompt`
-    - `openings`
-    - `witness_exam`
-    - `closings`
-    - `verdict_vote`
-    - `sentence_vote`
-    - `final_ruling`
-- Live SSE stream per session
-- Jury verdict and sentence voting endpoints
-- Deterministic phase-order and vote-window enforcement
-- Minimal stripped web UI (`public/index.html`)
-    - Overlay shell with phase timer, active speaker, and live captions
-    - Viewer layout showing current phase context and jury voting status
-    - Verdict/sentence poll bars with live percentages and phase-gated voting
-    - SSE analytics events for poll start/close and vote completion
-- **Operator Dashboard** (`/operator`)
-    - Real-time session monitoring with live event feed
-    - Vote tallies and witness cap tracking
-    - Moderation queue for content review
-    - Manual controls for session management
-    - Analytics dashboard with event timelines
-- **Structured Logging Service**
-    - JSON-formatted logs with session/phase/event correlation
-    - Configurable log levels (debug/info/warn/error)
-    - Child loggers with inherited context
-    - Production-ready logging architecture
+## Tech Stack
 
-## Environment
+- Node.js + TypeScript
+- Express (API + static serving)
+- React + Vite (operator dashboard)
+- Postgres (optional durable store)
 
-Copy `.env.example` to `.env` and set values as needed.
+## Quick Start (Local)
 
-Key variables:
+### 1) Install dependencies
 
-- `OPENROUTER_API_KEY` (optional for local mock mode; required for real LLM calls)
-- `LLM_MODEL`
-- `LLM_MOCK` (set to `true` to force deterministic mock responses)
-- `PORT`
-- `DATABASE_URL` (Postgres connection string for durable persistence)
-- `TTS_PROVIDER` (`noop` or `mock`; defaults to `noop`)
-- `VERDICT_VOTE_WINDOW_MS`
-- `SENTENCE_VOTE_WINDOW_MS`
-- `WITNESS_MAX_TOKENS`
-- `WITNESS_MAX_SECONDS`
-- `WITNESS_TOKENS_PER_SECOND`
-- `WITNESS_TRUNCATION_MARKER`
-- `JUDGE_RECAP_CADENCE`
-- `LOG_LEVEL` (debug, info, warn, error; defaults to `info`)
+```bash
+npm install
+```
 
-If `OPENROUTER_API_KEY` is empty, the app falls back to deterministic mock dialogue.
+### 2) Configure environment
 
-If `DATABASE_URL` is set, the app uses Postgres-backed persistence and runs migrations at startup.
-If `DATABASE_URL` is missing, the app falls back to in-memory storage (non-durable).
+```bash
+cp .env.example .env
+```
 
-`TTS_PROVIDER=noop` keeps TTS silent (default). `TTS_PROVIDER=mock` records adapter calls for local/testing workflows without requiring an external speech provider.
+For a zero-dependency local run:
 
-Witness response caps are controlled by `WITNESS_MAX_TOKENS` and `WITNESS_MAX_SECONDS`. The recap cadence uses `JUDGE_RECAP_CADENCE` (every N witness cycles). `WITNESS_TRUNCATION_MARKER` customizes the appended cutoff text.
+- leave `OPENROUTER_API_KEY` empty (mock dialogue fallback)
+- leave `DATABASE_URL` empty (in-memory session store)
 
-## Run
+### 3) Start the API server
 
-1. Install dependencies:
-    - `npm install`
-2. (Optional but recommended) run DB migrations explicitly:
-    - `npm run migrate`
-3. Start dev server:
-    - `npm run dev`
-4. Build operator dashboard:
-    - `npm run build:dashboard` (production build)
-    - `npm run dev:dashboard` (development mode on port 3001)
-5. Open:
-    - Main app: `http://localhost:3000`
-    - Operator dashboard: `http://localhost:3000/operator`
+```bash
+npm run dev
+```
 
-## Run with Docker (API + Postgres)
+Default local URL: `http://localhost:3000` (from `.env.example`).
 
-This repo includes a `docker-compose.yml` that starts both:
+### 4) Build operator dashboard assets
 
-- `api` (the Improv Court server)
+```bash
+npm run build:dashboard
+```
+
+Then open:
+
+- Main app: `http://localhost:3000`
+- Operator dashboard: `http://localhost:3000/operator`
+
+> The API serves `/operator` from `dist/dashboard`. If you haven’t built it yet, `/operator` will return a helpful 404 message.
+
+## Dashboard Dev Mode (Hot Reload)
+
+Run the dashboard separately while API dev server is running:
+
+```bash
+npm run dev:dashboard
+```
+
+- Dashboard dev URL: `http://localhost:3001/operator/`
+- API proxy target in Vite is `http://localhost:3000`
+
+If your API is not on port `3000`, update `vite.config.ts` proxy settings.
+
+## Docker Compose (API + Postgres)
+
+The compose stack includes:
+
+- `api` (JuryRigged server)
 - `db` (Postgres 16)
 
-Start the full stack:
+Start:
 
-- `npm run docker:up`
+```bash
+npm run docker:up
+```
 
-Or directly:
+Stop:
 
-- `docker compose up --build`
+```bash
+npm run docker:down
+```
 
-Stop the stack:
+Container behavior:
 
-- `npm run docker:down`
+- API runs on container port `3001`
+- Host mapping defaults to `${API_HOST_PORT:-3001}`
+- Migrations run automatically on container startup (`npm run migrate:dist`)
 
-The API container runs migrations on startup (`npm run migrate:dist`) before starting the server.
+Default compose endpoints:
 
-Endpoints when running with compose:
+- App + API: `http://localhost:${API_HOST_PORT:-3001}`
+- Operator dashboard: `http://localhost:${API_HOST_PORT:-3001}/operator`
 
-- Main app: `http://localhost:${API_HOST_PORT:-3000}`
-- Operator dashboard: `http://localhost:${API_HOST_PORT:-3000}/operator`
-- API: `http://localhost:${API_HOST_PORT:-3000}/api`
-- Postgres: internal-only by default (`db:5432` inside compose network)
+## Configuration
 
-If port `3000` is already in use on your machine, set `API_HOST_PORT` in `.env` (for example `API_HOST_PORT=3002`) and restart compose.
+Copy `.env.example` and tune as needed.
 
-If you need host access to Postgres, add a `ports` mapping to the `db` service in `docker-compose.yml` (for example `"5433:5432"` to avoid conflicts with local Postgres).
+### Core runtime
 
-## Operations runbook (staging)
+| Variable | Purpose |
+| --- | --- |
+| `PORT` | API port for local non-Docker runs (default in `.env.example`: `3000`) |
+| `OPENROUTER_API_KEY` | Required for live LLM calls; empty enables deterministic mock fallback |
+| `LLM_MODEL` | OpenRouter model identifier |
+| `LLM_MOCK` | Force mock mode (`true`/`false`) |
+| `DATABASE_URL` | Enables Postgres-backed durable store; omit for in-memory |
+| `LOG_LEVEL` | `debug`, `info`, `warn`, `error` |
 
-See `docs/ops-runbook.md` for the repeatable staging deploy path, GitHub Actions
-workflow (`Staging Deploy`), core SLI dashboard definitions, alert thresholds,
-and incident drill/recovery steps. Ops-related configuration is validated as part of the standard test suite (see `npm test` under "Local CI parity" below).
+### Voting + moderation safety
 
-## API
+| Variable | Purpose |
+| --- | --- |
+| `VERDICT_VOTE_WINDOW_MS` | Verdict poll window duration |
+| `SENTENCE_VOTE_WINDOW_MS` | Sentence poll window duration |
+| `VOTE_SPAM_MAX_VOTES_PER_WINDOW` | Vote rate cap per window |
+| `VOTE_SPAM_WINDOW_MS` | Rate-limit window size |
+| `VOTE_SPAM_DUPLICATE_WINDOW_MS` | Duplicate-vote suppression window |
+
+### Witness / token controls
+
+| Variable | Purpose |
+| --- | --- |
+| `WITNESS_MAX_TOKENS` | Max witness response tokens before truncation |
+| `WITNESS_MAX_SECONDS` | Max witness response duration |
+| `WITNESS_TOKENS_PER_SECOND` | Duration↔token heuristic |
+| `WITNESS_TRUNCATION_MARKER` | Marker appended after truncation |
+| `JUDGE_RECAP_CADENCE` | Emit recap every N witness cycles |
+| `ROLE_MAX_TOKENS_*` | Per-role token budget overrides |
+| `TOKEN_COST_PER_1K_USD` | Cost estimation coefficient |
+
+### Broadcast integration
+
+| Variable | Purpose |
+| --- | --- |
+| `BROADCAST_PROVIDER` | `noop` or `obs` |
+| `OBS_WEBSOCKET_URL` | OBS WebSocket endpoint |
+| `OBS_WEBSOCKET_PASSWORD` | OBS auth password (optional but recommended) |
+
+See `docs/broadcast-integration.md` for setup details.
+
+## API at a Glance
 
 - `GET /api/health`
 - `GET /api/court/sessions`
@@ -141,18 +166,64 @@ and incident drill/recovery steps. Ops-related configuration is validated as par
 - `POST /api/court/sessions/:id/phase`
 - `GET /api/court/sessions/:id/stream` (SSE)
 
-## Local CI parity
+Full schemas, error codes, and event contracts: `docs/api.md`.
 
-Run the same checks as CI locally before pushing:
+## Development Commands
 
-```sh
-npm run lint   # type-check (tsc --noEmit)
-npm run build  # compile TypeScript to dist/
-npm test       # run all tests
+### npm scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start API in watch mode (`src/server.ts`) |
+| `npm run dev:dashboard` | Start Vite dashboard dev server |
+| `npm run build` | Compile TS to `dist/` + build dashboard |
+| `npm run build:dashboard` | Build dashboard only |
+| `npm run start` | Run compiled server (`dist/server.js`) |
+| `npm run migrate` | Run migrations from source (`tsx`) |
+| `npm run migrate:dist` | Run migrations from compiled output |
+| `npm test` | Run Node test suite |
+| `npm run test:ops` | Run ops config tests |
+| `npm run smoke:staging` | Run staging smoke script |
+
+### Make targets
+
+`Makefile` mirrors common workflows (`make dev`, `make test`, `make ci`, `make docker-up`, etc.).
+
+## Local CI Parity
+
+Run before opening a PR:
+
+```bash
+npm run lint
+npm run build
+npm test
 ```
+
+## Repository Layout
+
+- `src/` — server, orchestrator, store, moderation, broadcast, tests
+- `public/` — viewer UI
+- `dashboard/` — operator dashboard (React + Vite)
+- `db/migrations/` — SQL schema migrations
+- `docs/` — architecture, API, moderation, ops runbooks
+- `ops/` — alert thresholds + runtime health dashboard artifacts
+
+## Documentation Map
+
+| Document | Description |
+| --- | --- |
+| `docs/ADR-001-juryrigged-architecture.md` | Core architectural decisions and invariants |
+| `docs/architecture.md` | System components and phase sequencing |
+| `docs/api.md` | REST + SSE contracts and schemas |
+| `docs/operator-runbook.md` | Operator procedures and incident response |
+| `docs/ops-runbook.md` | Staging deploy path, SLI/alert definitions |
+| `docs/moderation-playbook.md` | Moderation policy and handling |
+| `docs/event-taxonomy.md` | Event taxonomy and payload expectations |
+| `docs/broadcast-integration.md` | OBS/broadcast automation configuration |
+| `docs/phase5-6-implementation-plan.md` | Roadmap implementation plan |
 
 ## Notes
 
-- The existing `subcult-corp` directory is used only as a **reference source** and is not imported.
-- Core reusable ideas were copied into `src/` as standalone modules.
-- Schema migration SQL is under `db/migrations/`.
+- Migrations run automatically when using Postgres-backed storage.
+- When `DATABASE_URL` is not set, sessions are non-durable and not recoverable after restart.
+- On restart with Postgres, interrupted `running` sessions are recovered and resumed.

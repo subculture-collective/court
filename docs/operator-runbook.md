@@ -1,6 +1,6 @@
 # Operator Runbook
 
-This document covers everything needed to deploy, configure, and operate Improv Court.
+This document covers everything needed to deploy, configure, and operate JuryRigged.
 
 ---
 
@@ -65,7 +65,7 @@ Open `http://localhost:3001` in a browser.
 
 The compose file starts two services:
 
-- `api` — the Improv Court server (builds from `Dockerfile`)
+- `api` — the JuryRigged server (builds from `Dockerfile`)
 - `db` — Postgres 16
 
 ```bash
@@ -218,7 +218,7 @@ There is no built-in metrics endpoint. For production observability, pipe logs t
 
 ### Schema
 
-The schema is defined in `db/migrations/001_improv_court_core.sql`.
+The schema is defined in `db/migrations/001_juryrigged_core.sql`.
 The migration system tracks applied migrations in `court_schema_migrations`.
 
 ### Cleaning up old sessions

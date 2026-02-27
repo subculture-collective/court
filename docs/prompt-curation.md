@@ -6,7 +6,7 @@
 
 ## Overview
 
-The Improv Court prompt bank provides a curated collection of case prompts organized by genre tags. The system automatically rotates through genres to avoid repetition and maintain audience engagement.
+The JuryRigged prompt bank provides a curated collection of case prompts organized by genre tags. The system automatically rotates through genres to avoid repetition and maintain audience engagement.
 
 ## Genre Taxonomy
 

@@ -353,7 +353,7 @@ export async function runCourtSession(
                 }),
         );
 
-        const allRiseCue = `All rise. The Court of Improvised Absurdity is now in session. Case: ${session.topic}`;
+        const allRiseCue = `All rise. The JuryRigged court is now in session. Case: ${session.topic}`;
         await safelySpeak('speakCue', () =>
             tts.speakCue({
                 sessionId: session.id,

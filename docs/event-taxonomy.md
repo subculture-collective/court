@@ -1,6 +1,6 @@
 # Event Taxonomy
 
-Canonical reference for all runtime events emitted by the Improv Court system.
+Canonical reference for all runtime events emitted by the JuryRigged system.
 Every event is represented as a [`CourtEvent`](../src/types.ts) and delivered
 over the Server-Sent Events stream (`GET /api/court/sessions/:id/stream`) and
 to any in-process `store.subscribe()` listener.

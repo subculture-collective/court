@@ -108,7 +108,7 @@ export async function createServerApp(
     app.use(express.static(publicDir));
 
     app.get('/api/health', (_req, res) => {
-        res.json({ ok: true, service: 'improv-court-poc' });
+        res.json({ ok: true, service: 'juryrigged' });
     });
 
     app.get('/api/court/sessions', async (_req, res) => {
@@ -242,7 +242,7 @@ export async function createServerApp(
                 topic,
                 participants,
                 metadata: {
-                    mode: 'improv_court',
+                    mode: 'juryrigged',
                     casePrompt: topic,
                     caseType,
                     sentenceOptions,
@@ -478,7 +478,7 @@ export async function bootstrap(): Promise<void> {
     const port = Number.parseInt(process.env.PORT ?? '3000', 10);
     app.listen(port, () => {
         // eslint-disable-next-line no-console
-        console.log(`Improv Court POC running on http://localhost:${port}`);
+        console.log(`JuryRigged running on http://localhost:${port}`);
         // eslint-disable-next-line no-console
         console.log(`Operator Dashboard: http://localhost:${port}/operator`);
     });

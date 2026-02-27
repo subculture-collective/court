@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Improv Court is a real-time multi-agent courtroom simulation.
+JuryRigged is a real-time multi-agent courtroom simulation.
 Six AI agents are assigned courtroom roles, run through a deterministic phase sequence, and stream every turn to connected viewers via SSE.
 Audience members serve as jury by voting through REST endpoints.
 
@@ -93,7 +93,7 @@ The store has two backends selected automatically:
 | `DATABASE_URL` is set  | Postgres (durable)  |
 | `DATABASE_URL` absent  | In-memory (volatile)|
 
-The Postgres schema is under `db/migrations/001_improv_court_core.sql`.
+The Postgres schema is under `db/migrations/001_juryrigged_core.sql`.
 Migrations are run automatically on startup when the Postgres backend is active.
 
 The store exposes an event bus (`EventEmitter`) that routes session events to SSE subscribers.

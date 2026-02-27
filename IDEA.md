@@ -1,4 +1,4 @@
-# Improv Court ⚖️🎭
+# JuryRigged ⚖️🎭
 
 *Roleplay comedy + audience verdict game show format*
 
@@ -213,9 +213,9 @@ Designed to be naturally robust with stream delay:
 
 ### Architecture Decision Record
 
-See [docs/ADR-001-improv-court-architecture.md](docs/ADR-001-improv-court-architecture.md) for runtime boundaries, module ownership, phase-state contracts, and API/SSE/persistence contracts.
+See [docs/ADR-001-juryrigged-architecture.md](docs/ADR-001-juryrigged-architecture.md) for runtime boundaries, module ownership, phase-state contracts, and API/SSE/persistence contracts.
 
-### Phase 1 — Improv Court = “Orchestration/Overlay Engine Test”
+### Phase 1 — JuryRigged = “Orchestration/Overlay Engine Test”
 
 Proves:
 
@@ -285,6 +285,6 @@ Uses everything:
 
 ### Relative runtime cost (low → high)
 
-Improv Court (medium) < Cipher (medium) < Writers’ Room (medium-high) ≈ Ghost (medium-high)
+JuryRigged (medium) < Cipher (medium) < Writers’ Room (medium-high) ≈ Ghost (medium-high)
 
 ---

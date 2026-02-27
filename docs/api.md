@@ -16,7 +16,7 @@ Returns service liveness.
 **Response `200`**
 
 ```json
-{ "ok": true, "service": "improv-court-poc" }
+{ "ok": true, "service": "juryrigged" }
 ```
 
 ---
@@ -218,7 +218,7 @@ data: {"type":"turn","payload":{…}}\n\n
 
 ```ts
 {
-  mode: "improv_court";
+  mode: "juryrigged";
   casePrompt: string;
   caseType: "criminal" | "civil";
   sentenceOptions: string[];

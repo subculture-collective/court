@@ -42,7 +42,7 @@ describe('Court State Machine - Phase Transitions', () => {
             topic: 'Test case for phase transitions',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case for phase transitions',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -91,7 +91,7 @@ describe('Court State Machine - Phase Transitions', () => {
             topic: 'Test case for skipping evidence reveal',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case for phase transitions',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -133,7 +133,7 @@ describe('Court State Machine - Phase Transitions', () => {
             topic: 'Test case for invalid jumps',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case for invalid jumps',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -181,7 +181,7 @@ describe('Court State Machine - Phase Transitions', () => {
             topic: 'Test case for no-op transitions',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case for no-op transitions',
                 caseType: 'civil',
                 roleAssignments: {
@@ -215,7 +215,7 @@ describe('Court State Machine - Phase Transitions', () => {
             topic: 'Test case for phase events',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case for phase events',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -310,7 +310,7 @@ describe('Court State Machine - Phase Transitions', () => {
             topic: 'Test case for backward jump prevention',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case for backward jump prevention',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -359,7 +359,7 @@ describe('Court State Machine - Phase Transitions', () => {
             topic: 'Test case for poll events',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt: 'Test case for poll events',
                 caseType: 'criminal',
                 roleAssignments: {
@@ -410,7 +410,7 @@ describe('Court Orchestrator - TTS integration', () => {
             topic: 'Did the defendant replace office coffee with soup?',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt:
                     'Did the defendant replace office coffee with soup?',
                 caseType: 'criminal',
@@ -447,7 +447,7 @@ describe('Court Orchestrator - TTS integration', () => {
             topic: 'Did the defendant install a trampoline in the jury box?',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt:
                     'Did the defendant install a trampoline in the jury box?',
                 caseType: 'criminal',

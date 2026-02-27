@@ -82,7 +82,7 @@ export interface CourtTurn {
 }
 
 export interface CourtSessionMetadata {
-    mode: 'improv_court';
+    mode: 'juryrigged';
     casePrompt: string;
     caseType: CaseType;
     sentenceOptions: string[];

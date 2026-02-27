@@ -1,14 +1,14 @@
-# ADR-001 — Improv Court Runtime Architecture
+# ADR-001 — JuryRigged Runtime Architecture
 
-**Status:** Accepted  
-**Date:** 2026-02-27  
-**Author:** @copilot  
+**Status:** Accepted
+**Date:** 2026-02-27
+**Author:** @copilot
 
 ---
 
 ## Context
 
-Improv Court is a real-time multi-agent courtroom simulation.
+JuryRigged is a real-time multi-agent courtroom simulation.
 The runtime now includes an HTTP/SSE API layer, a phase-sequencing orchestrator, an LLM client, a content-moderation filter, a vote-spam guard, and a dual-backend session store.
 Boundary ownership between these modules needs a durable reference so that future contributors can understand which module is responsible for which concern and what contracts must be honoured across module boundaries.
 

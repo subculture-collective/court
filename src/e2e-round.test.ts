@@ -47,7 +47,7 @@ test('e2e round completes with witness caps and recap cadence', async () => {
             topic: 'Did the defendant replace all office coffee with soup?',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt:
                     'Did the defendant replace all office coffee with soup?',
                 caseType: 'criminal',

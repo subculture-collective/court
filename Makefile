@@ -13,7 +13,7 @@ DOCKER_COMPOSE ?= docker compose
 .PHONY: help install dev dev-dashboard lint build build-dashboard test test-spec ci smoke-staging start migrate migrate-dist docker-up docker-down docker-restart clean status
 
 help: ## Show available commands
-	@awk 'BEGIN {FS = ":.*##"; printf "\nImprov Court Make targets:\n\n"} /^[a-zA-Z0-9_.-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 } END { printf "\n" }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nJuryRigged Make targets:\n\n"} /^[a-zA-Z0-9_.-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 } END { printf "\n" }' $(MAKEFILE_LIST)
 
 install: ## Install Node dependencies
 	$(NPM) install

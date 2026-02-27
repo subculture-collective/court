@@ -15,7 +15,7 @@ async function createRunningSession() {
             topic: 'Did the defendant replace all office coffee with soup?',
             participants,
             metadata: {
-                mode: 'improv_court',
+                mode: 'juryrigged',
                 casePrompt:
                     'Did the defendant replace all office coffee with soup?',
                 caseType: 'criminal',
@@ -273,7 +273,7 @@ test(
                 topic: 'Did the defendant replace all office coffee with soup?',
                 participants,
                 metadata: {
-                    mode: 'improv_court',
+                    mode: 'juryrigged',
                     casePrompt:
                         'Did the defendant replace all office coffee with soup?',
                     caseType: 'criminal',
@@ -326,7 +326,7 @@ test(
                 topic: 'Test case 1 for recovery',
                 participants,
                 metadata: {
-                    mode: 'improv_court',
+                    mode: 'juryrigged',
                     casePrompt: 'Test case 1',
                     caseType: 'criminal',
                     sentenceOptions: ['Fine'],
@@ -343,7 +343,7 @@ test(
                 topic: 'Test case 2 for recovery',
                 participants,
                 metadata: {
-                    mode: 'improv_court',
+                    mode: 'juryrigged',
                     casePrompt: 'Test case 2',
                     caseType: 'criminal',
                     sentenceOptions: ['Fine'],
@@ -361,7 +361,7 @@ test(
                 topic: 'Test case 3 for recovery',
                 participants,
                 metadata: {
-                    mode: 'improv_court',
+                    mode: 'juryrigged',
                     casePrompt: 'Test case 3',
                     caseType: 'criminal',
                     sentenceOptions: ['Fine'],

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
-  "dashboardId": "improv-court-runtime-health",
-  "title": "Improv Court Runtime Health",
+  "dashboardId": "juryrigged-runtime-health",
+  "title": "JuryRigged Runtime Health",
   "description": "Core SLI/SLO proxy panels for Phase 5 operations readiness.",
   "datasources": {
     "postgres": "court",

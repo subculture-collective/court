@@ -1,12 +1,12 @@
 # Moderation Playbook
 
-This document describes the content moderation system and procedures for responding to incidents during live Improv Court sessions.
+This document describes the content moderation system and procedures for responding to incidents during live JuryRigged sessions.
 
 ---
 
 ## Overview
 
-Improv Court uses a layered moderation approach:
+JuryRigged uses a layered moderation approach:
 
 1. **Curated + screened inputs** — case prompts (operator or API-supplied) are screened with the moderation filter; unsafe topics are rejected and unsafe prompt-bank entries are skipped.
 2. **LLM system prompt policy** — every agent prompt includes the Clean Courtroom Policy (see below).

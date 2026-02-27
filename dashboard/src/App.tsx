@@ -56,7 +56,7 @@ function App() {
                     <div className='flex items-center justify-between'>
                         <div>
                             <h1 className='text-2xl font-bold text-primary-400'>
-                                Improv Court
+                                JuryRigged
                             </h1>
                             <p className='text-sm text-gray-400'>
                                 Operator Dashboard

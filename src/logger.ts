@@ -1,5 +1,5 @@
 /**
- * Structured logging service for Improv Court
+ * Structured logging service for JuryRigged
  * Provides JSON-formatted logs with session/phase/event correlation
  */
 
