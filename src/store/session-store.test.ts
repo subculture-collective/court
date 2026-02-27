@@ -115,3 +115,48 @@ test('rejects unknown phase values', async () => {
         /Unknown next phase/,
     );
 });
+
+test(
+    'postgres store persists final ruling when TEST_DATABASE_URL is provided',
+    { skip: !process.env.TEST_DATABASE_URL },
+    async () => {
+        const previousDatabaseUrl = process.env.DATABASE_URL;
+        process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+        try {
+            const store = await createCourtSessionStore();
+            const participants = AGENT_IDS.slice(0, 5);
+            const session = await store.createSession({
+                topic: 'Did the defendant replace all office coffee with soup?',
+                participants,
+                metadata: {
+                    mode: 'improv_court',
+                    casePrompt:
+                        'Did the defendant replace all office coffee with soup?',
+                    caseType: 'criminal',
+                    sentenceOptions: ['Fine', 'Community service'],
+                    verdictVoteWindowMs: 10,
+                    sentenceVoteWindowMs: 10,
+                    verdictVotes: {},
+                    sentenceVotes: {},
+                    roleAssignments: assignCourtRoles(participants),
+                },
+            });
+            await store.startSession(session.id);
+            await store.recordFinalRuling({
+                sessionId: session.id,
+                verdict: 'guilty',
+                sentence: 'Fine',
+            });
+            const reloaded = await store.getSession(session.id);
+            assert.equal(reloaded?.metadata.finalRuling?.verdict, 'guilty');
+            assert.equal(reloaded?.metadata.finalRuling?.sentence, 'Fine');
+            assert.ok(reloaded?.metadata.finalRuling?.decidedAt);
+        } finally {
+            if (previousDatabaseUrl === undefined) {
+                delete process.env.DATABASE_URL;
+            } else {
+                process.env.DATABASE_URL = previousDatabaseUrl;
+            }
+        }
+    },
+);
