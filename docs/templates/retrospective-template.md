@@ -115,11 +115,11 @@ During a staged live-round rehearsal, SSE clients repeatedly disconnected and re
 
 ### CAPA
 
-| Action | Owner | Priority (P0-P3) | ETA | Status |
+| Action | Owner | Priority (P0-P3) | ETA (effort band) | Status |
 | --- | --- | --- | --- | --- |
-| Add reconnect-storm synthetic scenario | QA | P1 | 3 days | Open |
-| Tune SSE reconnect backoff profile | Backend | P1 | 5 days | Open |
-| Add operator comms macro for emergency recap | Ops | P2 | 2 days | Open |
+| Add reconnect-storm synthetic scenario | QA | P1 | M | Open |
+| Tune SSE reconnect backoff profile | Backend | P1 | M | Open |
+| Add operator comms macro for emergency recap | Ops | P2 | S | Open |
 
 ### What we learned
 
