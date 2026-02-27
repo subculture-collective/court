@@ -176,9 +176,11 @@ Deliver all open roadmap work in **Phase 5 (Release & Operations)** and **Phase 
 
 - Plan documented ✅
 - Implementation started with `#29` ✅
-- `#30` dashboards + alerts + synthetic validation ✅
-- `#31` operator runbook expansion + incident drills/fallbacks ✅
-- `#33` token budgets + session cost telemetry + tests ✅
-- `#34` onboarding/catch-up panel + toggle telemetry + tests ✅
-- `#32` retrospective template + debt queue + mock incident draft ✅
-- Phase 5 & 6 roadmap implementation complete ✅
+- `#30` dashboards + alerts + synthetic validation ⏳ (planned)
+- `#31` operator runbook expansion + incident drills/fallbacks ⏳ (planned)
+- `#33` token budgets + session cost telemetry + tests ⏳ (planned)
+- `#34` onboarding/catch-up panel + toggle telemetry + tests ⏳ (planned)
+- `#32` retrospective template + debt queue + mock incident draft ⏳ (planned)
+- Phase 5 & 6 roadmap implementation in this repository is in progress ⏳
+
+> Note: items marked ⏳ (planned) are not yet present in this repository.
