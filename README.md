@@ -7,13 +7,13 @@ It does **not** depend on `subcult-corp` at runtime.
 
 - Multi-agent courtroom roles (judge, prosecutor, defense, witnesses, bailiff)
 - Phase-based court flow:
-  - `case_prompt`
-  - `openings`
-  - `witness_exam`
-  - `closings`
-  - `verdict_vote`
-  - `sentence_vote`
-  - `final_ruling`
+    - `case_prompt`
+    - `openings`
+    - `witness_exam`
+    - `closings`
+    - `verdict_vote`
+    - `sentence_vote`
+    - `final_ruling`
 - Live SSE stream per session
 - Jury verdict and sentence voting endpoints
 - Minimal stripped web UI (`public/index.html`)
