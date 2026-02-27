@@ -3,6 +3,15 @@
 This is a **standalone root-level implementation** of the Improv Court proof of concept.
 It does **not** depend on `subcult-corp` at runtime.
 
+## Documentation
+
+| Document | Description |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | System architecture, agent roles, and phase flow |
+| [docs/api.md](docs/api.md) | REST API endpoints, schemas, and SSE event contracts |
+| [docs/operator-runbook.md](docs/operator-runbook.md) | Setup, configuration, deployment, and monitoring |
+| [docs/moderation-playbook.md](docs/moderation-playbook.md) | Content moderation system and incident procedures |
+
 ## What is implemented
 
 - Multi-agent courtroom roles (judge, prosecutor, defense, witnesses, bailiff)
