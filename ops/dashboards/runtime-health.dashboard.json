@@ -21,7 +21,8 @@
       "title": "Vote API latency p95 (10m)",
       "type": "timeseries",
       "unit": "seconds",
-      "eventTaxonomyRefs": ["analytics_event.vote_completed"],
+      "eventTaxonomyRefs": ["analytics_event"],
+      "eventName": "vote_completed",
       "probe": {
         "method": "POST",
         "pathTemplate": "/api/court/sessions/<session-id>/vote",

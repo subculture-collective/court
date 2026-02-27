@@ -126,11 +126,35 @@ test('runtime dashboard event references align with event taxonomy', () => {
     assert.ok(refs.length > 0);
 
     for (const reference of refs) {
-        const eventType = reference.split('.')[0];
-        assert.ok(
-            taxonomy.includes(`### \`${eventType}\``),
-            `Expected event taxonomy entry for ${eventType}`,
-        );
+        if (reference.startsWith('analytics_event.')) {
+            const eventName = reference.slice('analytics_event.'.length);
+            assert.ok(eventName, 'analytics_event reference must include event name');
+
+            const sectionHeader = '### `analytics_event`';
+            const sectionStart = taxonomy.indexOf(sectionHeader);
+            assert.ok(
+                sectionStart !== -1,
+                'Expected analytics_event section in event taxonomy',
+            );
+
+            const afterHeader = taxonomy.slice(sectionStart + sectionHeader.length);
+            const nextSectionIndex = afterHeader.indexOf('### `');
+            const analyticsSectionBody =
+                nextSectionIndex === -1
+                    ? afterHeader
+                    : afterHeader.slice(0, nextSectionIndex);
+
+            assert.ok(
+                analyticsSectionBody.includes(`\`${eventName}\``),
+                `Expected analytics_event entry for ${eventName}`,
+            );
+        } else {
+            const eventType = reference.split('.')[0];
+            assert.ok(
+                taxonomy.includes(`### \`${eventType}\``),
+                `Expected event taxonomy entry for ${eventType}`,
+            );
+        }
     }
 });
 
