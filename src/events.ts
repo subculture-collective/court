@@ -103,6 +103,35 @@ export interface SessionFailedPayload {
     completedAt: string; // ISO 8601
 }
 
+// Phase 3 payload interfaces
+
+export interface BroadcastHookTriggeredPayload {
+    hookType: 'phase_stinger' | 'scene_switch' | 'moderation_alert';
+    phase?: string;
+    sceneName?: string;
+    triggeredAt: string; // ISO 8601
+}
+
+export interface BroadcastHookFailedPayload {
+    hookType: 'phase_stinger' | 'scene_switch' | 'moderation_alert';
+    error: string;
+    phase?: string;
+    failedAt: string; // ISO 8601
+}
+
+export interface EvidenceRevealedPayload {
+    evidenceId: string;
+    evidenceText: string;
+    phase: string;
+    revealedAt: string; // ISO 8601
+}
+
+export interface ObjectionCountChangedPayload {
+    count: number;
+    phase: string;
+    changedAt: string; // ISO 8601
+}
+
 // ---------------------------------------------------------------------------
 // Shape guard
 // ---------------------------------------------------------------------------
@@ -258,6 +287,48 @@ export function assertEventPayload(event: CourtEvent): void {
             ) {
                 throw new TypeError(
                     `session_failed payload missing required string fields: sessionId, reason, completedAt`,
+                );
+            }
+            break;
+
+        case 'broadcast_hook_triggered':
+            if (!hasStringKeys(payload, ['hookType', 'triggeredAt'])) {
+                throw new TypeError(
+                    `broadcast_hook_triggered payload missing required string fields: hookType, triggeredAt`,
+                );
+            }
+            break;
+
+        case 'broadcast_hook_failed':
+            if (!hasStringKeys(payload, ['hookType', 'error', 'failedAt'])) {
+                throw new TypeError(
+                    `broadcast_hook_failed payload missing required string fields: hookType, error, failedAt`,
+                );
+            }
+            break;
+
+        case 'evidence_revealed':
+            if (
+                !hasStringKeys(payload, [
+                    'evidenceId',
+                    'evidenceText',
+                    'phase',
+                    'revealedAt',
+                ])
+            ) {
+                throw new TypeError(
+                    `evidence_revealed payload missing required string fields: evidenceId, evidenceText, phase, revealedAt`,
+                );
+            }
+            break;
+
+        case 'objection_count_changed':
+            if (
+                !hasStringKeys(payload, ['phase', 'changedAt']) ||
+                typeof payload['count'] !== 'number'
+            ) {
+                throw new TypeError(
+                    `objection_count_changed payload missing required fields: count (number), phase, changedAt`,
                 );
             }
             break;

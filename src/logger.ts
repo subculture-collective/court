@@ -80,7 +80,7 @@ export class Logger {
     // Convenience method to create a child logger with base context
     child(baseContext: LogContext): Logger {
         const parent = this;
-        const childLogger = Object.create(Logger.prototype);
+        const childLogger = Object.create(Logger.prototype) as Logger;
 
         childLogger.minLevel = this.minLevel;
 

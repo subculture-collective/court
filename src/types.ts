@@ -16,6 +16,31 @@ export interface AgentConfig {
 
 export type CaseType = 'criminal' | 'civil';
 
+export type GenreTag =
+    | 'absurd_civil'
+    | 'cosmic_crime'
+    | 'workplace_tribunal'
+    | 'fantasy_court';
+
+export interface PromptBankEntry {
+    id: string;
+    genre: GenreTag;
+    casePrompt: string;
+    caseType: CaseType;
+    active: boolean;
+}
+
+export interface GenreRotationConfig {
+    minDistance: number; // Minimum number of sessions before genre repeats
+    maxHistorySize: number; // Maximum genre history to track
+}
+
+export interface EvidenceCard {
+    id: string;
+    text: string;
+    revealedAt: string; // ISO 8601
+}
+
 export type CourtRole =
     | 'judge'
     | 'prosecutor'
@@ -84,6 +109,11 @@ export interface CourtSessionMetadata {
         decidedAt: string;
     };
     roleAssignments: CourtRoleAssignments;
+    // Phase 3 additions
+    currentGenre?: GenreTag;
+    genreHistory?: GenreTag[]; // Last N genres used
+    evidenceCards?: EvidenceCard[];
+    objectionCount?: number;
 }
 
 export interface CourtSession {
@@ -128,7 +158,12 @@ export type CourtEventType =
     | 'moderation_action'
     | 'vote_spam_blocked'
     | 'session_completed'
-    | 'session_failed';
+    | 'session_failed'
+    // Phase 3 additions
+    | 'broadcast_hook_triggered'
+    | 'broadcast_hook_failed'
+    | 'evidence_revealed'
+    | 'objection_count_changed';
 
 export interface CourtEvent {
     id: string;

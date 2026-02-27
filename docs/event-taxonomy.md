@@ -465,13 +465,141 @@ Emitted when the orchestrator throws an unrecoverable error.
 
 ---
 
+### `broadcast_hook_triggered` (Phase 3)
+
+Emitted when a broadcast automation hook executes successfully.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    hookType: 'phase_stinger' | 'scene_switch' | 'moderation_alert';
+    phase?: string;
+    sceneName?: string;
+    triggeredAt: string; // ISO 8601
+}
+```
+
+**Example**
+
+```json
+{
+    "type": "broadcast_hook_triggered",
+    "payload": {
+        "hookType": "scene_switch",
+        "phase": "verdict_vote",
+        "sceneName": "verdict_vote",
+        "triggeredAt": "2024-01-15T10:05:00.000Z"
+    }
+}
+```
+
+---
+
+### `broadcast_hook_failed` (Phase 3)
+
+Emitted when a broadcast automation hook fails to execute.
+
+**Severity:** `warn`
+
+**Payload**
+
+```ts
+{
+    hookType: 'phase_stinger' | 'scene_switch' | 'moderation_alert';
+    error: string; // error message
+    phase?: string;
+    failedAt: string; // ISO 8601
+}
+```
+
+**Example**
+
+```json
+{
+    "type": "broadcast_hook_failed",
+    "payload": {
+        "hookType": "scene_switch",
+        "error": "Connection refused",
+        "phase": "verdict_vote",
+        "failedAt": "2024-01-15T10:05:00.000Z"
+    }
+}
+```
+
+---
+
+### `evidence_revealed` (Phase 3)
+
+Emitted when evidence card is revealed during the `evidence_reveal` phase.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    evidenceId: string;
+    evidenceText: string;
+    phase: string;
+    revealedAt: string; // ISO 8601
+}
+```
+
+**Example**
+
+```json
+{
+    "type": "evidence_revealed",
+    "payload": {
+        "evidenceId": "evidence_1234567890",
+        "evidenceText": "A photograph showing the defendant standing suspiciously near the scene of the alleged absurdity.",
+        "phase": "evidence_reveal",
+        "revealedAt": "2024-01-15T10:04:30.000Z"
+    }
+}
+```
+
+---
+
+### `objection_count_changed` (Phase 3)
+
+Emitted when the objection counter increments (typically on moderation flags).
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    count: number; // new objection count
+    phase: string;
+    changedAt: string; // ISO 8601
+}
+```
+
+**Example**
+
+```json
+{
+    "type": "objection_count_changed",
+    "payload": {
+        "count": 3,
+        "phase": "witness_exam",
+        "changedAt": "2024-01-15T10:03:45.000Z"
+    }
+}
+```
+
+---
+
 ## Severity levels
 
-| Severity | Event types                                                                                                                                                                            |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `info`   | `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `witness_response_capped`, `judge_recap_emitted`, `analytics_event`, `session_completed` |
-| `warn`   | `moderation_action`, `vote_spam_blocked`                                                                                                                                               |
-| `error`  | `session_failed`                                                                                                                                                                       |
+- **info**: `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `witness_response_capped`, `judge_recap_emitted`, `analytics_event`, `session_completed`, `broadcast_hook_triggered`, `evidence_revealed`, `objection_count_changed`
+- **warn**: `moderation_action`, `vote_spam_blocked`, `broadcast_hook_failed`
+- **error**: `session_failed`
 
 ---
 
