@@ -15,6 +15,7 @@ It does **not** depend on `subcult-corp` at runtime.
 | [docs/operator-runbook.md](docs/operator-runbook.md)                                   | Setup, configuration, deployment, and monitoring                                       |
 | [docs/moderation-playbook.md](docs/moderation-playbook.md)                             | Content moderation system and incident procedures                                      |
 | [docs/event-taxonomy.md](docs/event-taxonomy.md)                                       | Canonical event taxonomy, payload schemas, and logging guidelines                      |
+| [docs/phase5-6-implementation-plan.md](docs/phase5-6-implementation-plan.md)           | Dependency-ordered implementation plan for roadmap phases 5 and 6                      |
 
 ## What is implemented
 
@@ -125,7 +126,9 @@ If you need host access to Postgres, add a `ports` mapping to the `db` service i
 
 ## Operations runbook (staging)
 
-See `docs/ops-runbook.md` for the repeatable staging deploy path, core SLI dashboard definitions, alert thresholds, and incident drill/recovery steps.
+See `docs/ops-runbook.md` for the repeatable staging deploy path, GitHub Actions
+workflow (`Staging Deploy`), core SLI dashboard definitions, alert thresholds,
+and incident drill/recovery steps.
 
 ## API
 

@@ -1,0 +1,189 @@
+name: Staging Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref (branch, tag, or SHA) to deploy
+        required: false
+        default: main
+      api_host_port:
+        description: Host port for API container mapping
+        required: false
+        default: '3001'
+      openrouter_api_key:
+        description: OpenRouter key for live profile runs (leave empty for mock profile)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: Deploy staging (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: mock
+            llm_mock: 'true'
+          - profile: live
+            llm_mock: 'false'
+    env:
+      API_HOST_PORT: ${{ github.event.inputs.api_host_port }}
+      DEPLOY_PROFILE: ${{ matrix.profile }}
+      LLM_MOCK: ${{ matrix.llm_mock }}
+      OPENROUTER_API_KEY_INPUT: ${{ github.event.inputs.openrouter_api_key }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Emit deploy start status
+        run: |
+          echo "::notice title=deploy_start::profile=${DEPLOY_PROFILE} sha=${GITHUB_SHA}"
+          echo "deploy_started_at=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+
+      - name: Validate staging credential contract
+        run: |
+          if [[ "${DEPLOY_PROFILE}" == "live" && -z "${OPENROUTER_API_KEY_INPUT}" ]]; then
+            echo "openrouter_api_key input is required for live staging profile."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare staging environment file
+        run: |
+          openrouter_key=""
+          if [[ "${DEPLOY_PROFILE}" == "live" ]]; then
+            openrouter_key="${OPENROUTER_API_KEY_INPUT}"
+          fi
+
+          cp .env.example .env
+          {
+            echo "API_HOST_PORT=${API_HOST_PORT}"
+            echo "LLM_MOCK=${LLM_MOCK}"
+            echo "OPENROUTER_API_KEY=${openrouter_key}"
+            echo "LOG_LEVEL=info"
+            echo "TTS_PROVIDER=noop"
+            echo "BROADCAST_PROVIDER=noop"
+          } >> .env
+
+      - name: Deploy compose stack
+        run: docker compose up -d --build
+
+      - name: Wait for API health
+        run: |
+          rm -f smoke-health.json
+          for _attempt in {1..30}; do
+            if curl -fsS "http://localhost:${API_HOST_PORT}/api/health" > smoke-health.json; then
+              cat smoke-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API health check did not pass within timeout."
+          exit 1
+
+      - name: Run staging smoke checks
+        run: |
+          chmod +x scripts/staging-smoke.sh
+          API_BASE_URL="http://localhost:${API_HOST_PORT}" \
+          SMOKE_OUTPUT_PATH="smoke-results.json" \
+          scripts/staging-smoke.sh
+
+      - name: Capture deploy metadata
+        if: ${{ success() }}
+        run: |
+          deploy_finished_at="$(date -u +%FT%TZ)"
+          cat <<JSON > deploy-metadata.json
+          {
+            "workflow": "${GITHUB_WORKFLOW}",
+            "runId": "${GITHUB_RUN_ID}",
+            "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "profile": "${DEPLOY_PROFILE}",
+            "ref": "${GITHUB_REF}",
+            "sha": "${GITHUB_SHA}",
+            "deployedAt": "${deploy_started_at}",
+            "finishedAt": "${deploy_finished_at}",
+            "status": "success"
+          }
+          JSON
+          cat deploy-metadata.json
+
+      - name: Ensure deploy metadata exists on failure
+        if: ${{ failure() }}
+        run: |
+          if [[ ! -f deploy-metadata.json ]]; then
+            deploy_finished_at="$(date -u +%FT%TZ)"
+            cat <<JSON > deploy-metadata.json
+            {
+              "workflow": "${GITHUB_WORKFLOW}",
+              "runId": "${GITHUB_RUN_ID}",
+              "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+              "profile": "${DEPLOY_PROFILE}",
+              "ref": "${GITHUB_REF}",
+              "sha": "${GITHUB_SHA}",
+              "deployedAt": "${deploy_started_at}",
+              "finishedAt": "${deploy_finished_at}",
+              "status": "failure"
+            }
+            JSON
+          fi
+
+      - name: Emit deploy end status (success)
+        if: ${{ success() }}
+        run: |
+          echo "::notice title=deploy_end::profile=${DEPLOY_PROFILE} status=success sha=${GITHUB_SHA}"
+
+      - name: Emit deploy end status (failure)
+        if: ${{ failure() }}
+        run: |
+          echo "::error title=deploy_end::profile=${DEPLOY_PROFILE} status=failure sha=${GITHUB_SHA}"
+
+      - name: Capture compose logs
+        if: ${{ always() }}
+        run: docker compose logs --no-color > docker-compose.log || true
+
+      - name: Tear down compose stack
+        if: ${{ always() }}
+        run: docker compose down -v || true
+
+      - name: Upload deployment artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-${{ matrix.profile }}-${{ github.run_id }}
+          path: |
+            smoke-health.json
+            smoke-results.json
+            deploy-metadata.json
+            docker-compose.log
+
+      - name: Write job summary
+        if: ${{ always() }}
+        run: |
+          echo "### Staging deploy (${DEPLOY_PROFILE})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: \`${GITHUB_REF}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SHA: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f smoke-results.json ]]; then
+            echo "- Smoke checks: ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Smoke checks: ❌ failed" >> "$GITHUB_STEP_SUMMARY"
+          fi

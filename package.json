@@ -10,6 +10,7 @@
         "build": "tsc -p tsconfig.json && vite build",
         "build:dashboard": "vite build",
         "test": "node --import tsx --test src/*.test.ts src/**/*.test.ts",
+        "smoke:staging": "bash ./scripts/staging-smoke.sh",
         "start": "node dist/server.js",
         "migrate": "tsx src/scripts/migrate.ts",
         "migrate:dist": "node dist/scripts/migrate.js",

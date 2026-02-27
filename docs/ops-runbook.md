@@ -16,12 +16,41 @@ Run from the project root directory:
 4. Optional migration-only verification:
    - `docker compose exec api npm run migrate:dist`
 
-Rollback (staging):
+### 1.1 GitHub Actions staging workflow
+
+Use workflow **`Staging Deploy`** (`.github/workflows/staging-deploy.yml`) to
+run repeatable staging deploy + smoke verification with an environment matrix:
+
+- `mock` profile (`LLM_MOCK=true`, no OpenRouter key required)
+- `live` profile (`LLM_MOCK=false`, requires `openrouter_api_key` workflow input)
+
+Workflow smoke checks:
+
+1. `GET /api/health`
+2. `POST /api/court/sessions`
+3. `GET /api/court/sessions/:id`
+
+Artifacts captured per run:
+
+- `smoke-health.json`
+- `smoke-results.json`
+- `deploy-metadata.json`
+- `docker-compose.log`
+
+### 1.2 Rollback (staging)
 
 1. Stop current stack: `npm run docker:down`
 2. Checkout previous known-good commit/tag.
 3. Start previous version: `npm run docker:up`
 4. Re-run health check curl above.
+
+Rollback trial checklist (verify once per release candidate):
+
+- [ ] Deploy a known good revision via `Staging Deploy`.
+- [ ] Deploy a deliberately broken revision (or force failed smoke input).
+- [ ] Roll back to previous good revision.
+- [ ] Confirm smoke checks pass and artifact logs show healthy recovery.
+- [ ] Record run ID, operator, and timestamp in incident notes.
 
 ## 2) Core SLI dashboard definitions
 
