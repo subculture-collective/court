@@ -12,7 +12,7 @@ It does **not** depend on `subcult-corp` at runtime.
 | [docs/ADR-001-improv-court-architecture.md](docs/ADR-001-improv-court-architecture.md) | Architecture Decision Record: runtime boundaries, data contracts, and phase invariants |
 | [docs/architecture.md](docs/architecture.md)                                           | System architecture, agent roles, and phase flow                                       |
 | [docs/api.md](docs/api.md)                                                             | REST API endpoints, schemas, and SSE event contracts                                   |
-| [docs/operator-runbook.md](docs/operator-runbook.md)                                   | Setup, configuration, deployment, and monitoring                                       |
+| [docs/operator-runbook.md](docs/operator-runbook.md)                                   | Setup, live controls, incident response, mistrial fallback, and operational monitoring |
 | [docs/moderation-playbook.md](docs/moderation-playbook.md)                             | Content moderation system and incident procedures                                      |
 | [docs/event-taxonomy.md](docs/event-taxonomy.md)                                       | Canonical event taxonomy, payload schemas, and logging guidelines                      |
 | [docs/phase5-6-implementation-plan.md](docs/phase5-6-implementation-plan.md)           | Dependency-ordered implementation plan for roadmap phases 5 and 6                      |
@@ -33,6 +33,7 @@ It does **not** depend on `subcult-corp` at runtime.
 - Deterministic phase-order and vote-window enforcement
 - Minimal stripped web UI (`public/index.html`)
     - Overlay shell with phase timer, active speaker, and live captions
+    - Viewer layout showing current phase context and jury voting status
     - Verdict/sentence poll bars with live percentages and phase-gated voting
     - SSE analytics events for poll start/close and vote completion
 - **Operator Dashboard** (`/operator`)
@@ -128,7 +129,7 @@ If you need host access to Postgres, add a `ports` mapping to the `db` service i
 
 See `docs/ops-runbook.md` for the repeatable staging deploy path, GitHub Actions
 workflow (`Staging Deploy`), core SLI dashboard definitions, alert thresholds,
-and incident drill/recovery steps.
+and incident drill/recovery steps. Ops-related configuration is validated as part of the standard test suite (see `npm test` under "Local CI parity" below).
 
 ## API
 
