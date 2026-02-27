@@ -18,6 +18,9 @@ It does **not** depend on `subcult-corp` at runtime.
 - Jury verdict and sentence voting endpoints
 - Deterministic phase-order and vote-window enforcement
 - Minimal stripped web UI (`public/index.html`)
+  - Overlay shell with phase timer, active speaker, and live captions
+  - Verdict/sentence poll bars with live percentages and phase-gated voting
+  - SSE analytics events for poll start/close and vote completion
 
 ## Environment
 

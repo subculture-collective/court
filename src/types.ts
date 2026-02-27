@@ -96,6 +96,7 @@ export type CourtEventType =
     | 'phase_changed'
     | 'turn'
     | 'vote_updated'
+    | 'analytics_event'
     | 'session_completed'
     | 'session_failed';
 

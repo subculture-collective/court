@@ -72,6 +72,12 @@ function allowedVerdictChoices(caseType: CaseType): string[] {
         :   ['guilty', 'not_guilty'];
 }
 
+function pollTypeForPhase(phase: CourtPhase): 'verdict' | 'sentence' | undefined {
+    if (phase === 'verdict_vote') return 'verdict';
+    if (phase === 'sentence_vote') return 'sentence';
+    return undefined;
+}
+
 export interface CourtSessionStore {
     createSession(input: {
         topic: string;
@@ -175,6 +181,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         phaseDurationMs?: number,
     ): Promise<CourtSession> {
         const session = this.mustGet(sessionId);
+        const previousPhase = session.phase;
         assertValidPhaseTransition(session.phase, phase);
         session.phase = phase;
         session.metadata.phaseStartedAt = new Date().toISOString();
@@ -192,6 +199,32 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
                 phaseDurationMs: session.metadata.phaseDurationMs,
             },
         });
+
+        const closingPoll = pollTypeForPhase(previousPhase);
+        if (closingPoll && previousPhase !== phase) {
+            this.publish({
+                sessionId,
+                type: 'analytics_event',
+                payload: {
+                    name: 'poll_closed',
+                    pollType: closingPoll,
+                    phase,
+                },
+            });
+        }
+
+        const openingPoll = pollTypeForPhase(phase);
+        if (openingPoll && previousPhase !== phase) {
+            this.publish({
+                sessionId,
+                type: 'analytics_event',
+                payload: {
+                    name: 'poll_started',
+                    pollType: openingPoll,
+                    phase,
+                },
+            });
+        }
 
         return deepCopy(session);
     }
@@ -272,6 +305,15 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
                 choice: input.choice,
                 verdictVotes: session.metadata.verdictVotes,
                 sentenceVotes: session.metadata.sentenceVotes,
+            },
+        });
+        this.publish({
+            sessionId: input.sessionId,
+            type: 'analytics_event',
+            payload: {
+                name: 'vote_completed',
+                pollType: input.voteType,
+                choice: input.choice,
             },
         });
 
@@ -506,7 +548,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         phase: CourtPhase,
         phaseDurationMs?: number,
     ): Promise<CourtSession> {
-        const row = await this.db.begin(async (tx: any) => {
+        const result = await this.db.begin(async (tx: any) => {
             const [current] = await tx<SessionRow[]>`
                 SELECT *
                 FROM court_sessions
@@ -535,11 +577,14 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 RETURNING *
             `;
 
-            return updated;
+            return {
+                updated,
+                previousPhase: current.phase,
+            };
         });
 
         const turns = await this.fetchTurns(sessionId);
-        const session = this.mapSession(row, turns);
+        const session = this.mapSession(result.updated, turns);
 
         this.publish({
             sessionId,
@@ -550,6 +595,32 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 phaseDurationMs: session.metadata.phaseDurationMs,
             },
         });
+
+        const closingPoll = pollTypeForPhase(result.previousPhase);
+        if (closingPoll && result.previousPhase !== phase) {
+            this.publish({
+                sessionId,
+                type: 'analytics_event',
+                payload: {
+                    name: 'poll_closed',
+                    pollType: closingPoll,
+                    phase,
+                },
+            });
+        }
+
+        const openingPoll = pollTypeForPhase(phase);
+        if (openingPoll && result.previousPhase !== phase) {
+            this.publish({
+                sessionId,
+                type: 'analytics_event',
+                payload: {
+                    name: 'poll_started',
+                    pollType: openingPoll,
+                    phase,
+                },
+            });
+        }
 
         return session;
     }
@@ -703,6 +774,15 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 choice: input.choice,
                 verdictVotes: session.metadata.verdictVotes,
                 sentenceVotes: session.metadata.sentenceVotes,
+            },
+        });
+        this.publish({
+            sessionId: input.sessionId,
+            type: 'analytics_event',
+            payload: {
+                name: 'vote_completed',
+                pollType: input.voteType,
+                choice: input.choice,
             },
         });
 
