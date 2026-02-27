@@ -9,13 +9,21 @@ import {
 } from '../broadcast/adapter.js';
 import {
     applyWitnessCap,
+    estimateTokens,
     effectiveTokenLimit,
     resolveWitnessCapConfig,
 } from './witness-caps.js';
 import type { WitnessCapConfig } from './witness-caps.js';
+import {
+    applyRoleTokenBudget,
+    estimateCostUsd,
+    resolveRoleTokenBudgetConfig,
+    type RoleTokenBudgetConfig,
+} from './token-budget.js';
 import type {
     AgentId,
     CaseType,
+    CourtPhase,
     CourtRole,
     CourtSession,
     CourtTurn,
@@ -60,6 +68,14 @@ async function generateTurn(input: {
     capConfig?: WitnessCapConfig;
     dialoguePrefix?: string;
     broadcast?: BroadcastAdapter;
+    roleBudgetConfig?: RoleTokenBudgetConfig;
+    onTokenSample?: (sample: {
+        turnId: string;
+        role: CourtRole;
+        phase: CourtPhase;
+        promptTokens: number;
+        completionTokens: number;
+    }) => void;
 }): Promise<CourtTurn> {
     const { store, session, speaker, role, userInstruction } = input;
 
@@ -73,13 +89,23 @@ async function generateTurn(input: {
         genre: session.metadata.currentGenre, // Phase 3: Pass genre for prompt variations
     });
 
+    const budgetResolution =
+        input.roleBudgetConfig ?
+            applyRoleTokenBudget(input.role, input.maxTokens, input.roleBudgetConfig)
+        :   {
+                requestedMaxTokens: input.maxTokens ?? 260,
+                appliedMaxTokens: input.maxTokens ?? 260,
+                roleMaxTokens: input.maxTokens ?? 260,
+                source: 'requested' as const,
+            };
+
     const raw = await llmGenerate({
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userInstruction },
         ],
         temperature: session.phase === 'witness_exam' ? 0.8 : 0.7,
-        maxTokens: input.maxTokens ?? 260,
+        maxTokens: budgetResolution.appliedMaxTokens,
     });
 
     let dialogue = sanitizeDialogue(raw);
@@ -149,6 +175,26 @@ async function generateTurn(input: {
     session.turns.push(turn);
     session.turnCount += 1;
 
+    store.emitEvent(session.id, 'token_budget_applied', {
+        turnId: turn.id,
+        speaker,
+        role,
+        phase: session.phase,
+        requestedMaxTokens: budgetResolution.requestedMaxTokens,
+        appliedMaxTokens: budgetResolution.appliedMaxTokens,
+        roleMaxTokens: budgetResolution.roleMaxTokens,
+        source: budgetResolution.source,
+    });
+
+    input.onTokenSample?.({
+        turnId: turn.id,
+        role,
+        phase: session.phase,
+        promptTokens:
+            estimateTokens(systemPrompt) + estimateTokens(userInstruction),
+        completionTokens: estimateTokens(dialogue),
+    });
+
     if (moderation.flagged && role !== 'judge') {
         const judgeId = session.metadata.roleAssignments.judge;
         const judgeTurn = await store.addTurn({
@@ -200,6 +246,7 @@ export async function runCourtSession(
     broadcastBySession.set(session.id, broadcast);
     const pause = options.sleepFn ?? sleep;
     const witnessCapConfig = resolveWitnessCapConfig();
+    const roleTokenBudgetConfig = resolveRoleTokenBudgetConfig();
     const recapCadenceRaw = Number.parseInt(
         process.env.JUDGE_RECAP_CADENCE ?? '2',
         10,
@@ -212,6 +259,54 @@ export async function runCourtSession(
         success: 0,
         failure: 0,
     };
+    const tokenEstimate = {
+        promptTokens: 0,
+        completionTokens: 0,
+    };
+
+    const recordTokenSample = (sample: {
+        turnId: string;
+        role: CourtRole;
+        phase: CourtPhase;
+        promptTokens: number;
+        completionTokens: number;
+    }): void => {
+        tokenEstimate.promptTokens += sample.promptTokens;
+        tokenEstimate.completionTokens += sample.completionTokens;
+        const cumulativeEstimatedTokens =
+            tokenEstimate.promptTokens + tokenEstimate.completionTokens;
+
+        store.emitEvent(session.id, 'session_token_estimate', {
+            turnId: sample.turnId,
+            role: sample.role,
+            phase: sample.phase,
+            estimatedPromptTokens: tokenEstimate.promptTokens,
+            estimatedCompletionTokens: tokenEstimate.completionTokens,
+            cumulativeEstimatedTokens,
+            costPer1kTokensUsd: roleTokenBudgetConfig.costPer1kTokensUsd,
+            estimatedCostUsd: estimateCostUsd(
+                cumulativeEstimatedTokens,
+                roleTokenBudgetConfig.costPer1kTokensUsd,
+            ),
+        });
+    };
+
+    const generateBudgetedTurn = (input: {
+        store: CourtSessionStore;
+        session: CourtSession;
+        speaker: AgentId;
+        role: CourtRole;
+        userInstruction: string;
+        maxTokens?: number;
+        capConfig?: WitnessCapConfig;
+        dialoguePrefix?: string;
+        broadcast?: BroadcastAdapter;
+    }) =>
+        generateTurn({
+            ...input,
+            roleBudgetConfig: roleTokenBudgetConfig,
+            onTokenSample: recordTokenSample,
+        });
 
     const safelySpeak = async (
         action: 'speakCue' | 'speakVerdict' | 'speakRecap',
@@ -284,7 +379,7 @@ export async function runCourtSession(
                 text: 'Opening statements begin now. Prosecution may proceed.',
             }),
         );
-        await generateTurn({
+        await generateBudgetedTurn({
             store,
             session,
             speaker: prosecutor,
@@ -293,7 +388,7 @@ export async function runCourtSession(
                 'Deliver your opening statement and explain why the court should lean toward conviction/liability.',
         });
         await pause(900);
-        await generateTurn({
+        await generateBudgetedTurn({
             store,
             session,
             speaker: defense,
@@ -320,7 +415,7 @@ export async function runCourtSession(
         let exchangeCount = 0;
 
         for (const [index, witness] of activeWitnesses.entries()) {
-            await generateTurn({
+            await generateBudgetedTurn({
                 store,
                 session,
                 speaker: judge,
@@ -329,7 +424,7 @@ export async function runCourtSession(
             });
             await pause(600);
 
-            await generateTurn({
+            await generateBudgetedTurn({
                 store,
                 session,
                 speaker: witness,
@@ -344,7 +439,7 @@ export async function runCourtSession(
             });
             await pause(600);
 
-            await generateTurn({
+            await generateBudgetedTurn({
                 store,
                 session,
                 speaker: prosecutor,
@@ -354,7 +449,7 @@ export async function runCourtSession(
             });
             await pause(600);
 
-            await generateTurn({
+            await generateBudgetedTurn({
                 store,
                 session,
                 speaker: defense,
@@ -366,7 +461,7 @@ export async function runCourtSession(
             exchangeCount += 1;
             if (exchangeCount % recapCadence === 0) {
                 await pause(600);
-                const recapTurn = await generateTurn({
+                const recapTurn = await generateBudgetedTurn({
                     store,
                     session,
                     speaker: judge,
@@ -423,7 +518,7 @@ export async function runCourtSession(
                 text: 'Closing arguments begin now.',
             }),
         );
-        await generateTurn({
+        await generateBudgetedTurn({
             store,
             session,
             speaker: prosecutor,
@@ -432,7 +527,7 @@ export async function runCourtSession(
                 'Deliver closing argument in 2-4 sentences with one memorable line.',
         });
         await pause(800);
-        await generateTurn({
+        await generateBudgetedTurn({
             store,
             session,
             speaker: defense,
@@ -559,7 +654,7 @@ export async function runCourtSession(
             }),
         );
 
-        await generateTurn({
+        await generateBudgetedTurn({
             store,
             session,
             speaker: judge,

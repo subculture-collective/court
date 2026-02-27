@@ -154,6 +154,8 @@ export type CourtEventType =
     | 'vote_closed'
     | 'witness_response_capped'
     | 'judge_recap_emitted'
+    | 'token_budget_applied'
+    | 'session_token_estimate'
     | 'analytics_event'
     | 'moderation_action'
     | 'vote_spam_blocked'

@@ -68,6 +68,28 @@ export interface JudgeRecapEmittedPayload {
     cycleNumber: number;
 }
 
+export interface TokenBudgetAppliedPayload {
+    turnId: string;
+    speaker: string;
+    role: string;
+    phase: CourtPhase;
+    requestedMaxTokens: number;
+    appliedMaxTokens: number;
+    roleMaxTokens: number;
+    source: 'env_role_cap' | 'requested';
+}
+
+export interface SessionTokenEstimatePayload {
+    turnId: string;
+    role: string;
+    phase: CourtPhase;
+    estimatedPromptTokens: number;
+    estimatedCompletionTokens: number;
+    cumulativeEstimatedTokens: number;
+    costPer1kTokensUsd: number;
+    estimatedCostUsd: number;
+}
+
 export type AnalyticsEventName =
     | 'poll_started'
     | 'vote_completed'
@@ -244,6 +266,40 @@ export function assertEventPayload(event: CourtEvent): void {
             ) {
                 throw new TypeError(
                     `judge_recap_emitted payload missing required fields: turnId, phase, cycleNumber`,
+                );
+            }
+            break;
+
+        case 'token_budget_applied':
+            if (
+                !hasStringKeys(payload, [
+                    'turnId',
+                    'speaker',
+                    'role',
+                    'phase',
+                    'source',
+                ]) ||
+                typeof payload['requestedMaxTokens'] !== 'number' ||
+                typeof payload['appliedMaxTokens'] !== 'number' ||
+                typeof payload['roleMaxTokens'] !== 'number'
+            ) {
+                throw new TypeError(
+                    `token_budget_applied payload missing required fields: turnId, speaker, role, phase, requestedMaxTokens, appliedMaxTokens, roleMaxTokens, source`,
+                );
+            }
+            break;
+
+        case 'session_token_estimate':
+            if (
+                !hasStringKeys(payload, ['turnId', 'role', 'phase']) ||
+                typeof payload['estimatedPromptTokens'] !== 'number' ||
+                typeof payload['estimatedCompletionTokens'] !== 'number' ||
+                typeof payload['cumulativeEstimatedTokens'] !== 'number' ||
+                typeof payload['costPer1kTokensUsd'] !== 'number' ||
+                typeof payload['estimatedCostUsd'] !== 'number'
+            ) {
+                throw new TypeError(
+                    `session_token_estimate payload missing required fields: turnId, role, phase, estimatedPromptTokens, estimatedCompletionTokens, cumulativeEstimatedTokens, costPer1kTokensUsd, estimatedCostUsd`,
                 );
             }
             break;

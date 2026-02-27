@@ -283,6 +283,52 @@ Emitted when the judge recap is generated during witness examination.
 
 ---
 
+### `token_budget_applied`
+
+Emitted when per-role token budget controls are applied to a generated turn.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    turnId: string;
+    speaker: AgentId;
+    role: CourtRole;
+    phase: CourtPhase;
+    requestedMaxTokens: number;
+    appliedMaxTokens: number;
+    roleMaxTokens: number;
+    source: 'env_role_cap' | 'requested';
+}
+```
+
+---
+
+### `session_token_estimate`
+
+Emitted after generated turns to provide cumulative token and cost estimates for a session.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    turnId: string;
+    role: CourtRole;
+    phase: CourtPhase;
+    estimatedPromptTokens: number;
+    estimatedCompletionTokens: number;
+    cumulativeEstimatedTokens: number;
+    costPer1kTokensUsd: number;
+    estimatedCostUsd: number;
+}
+```
+
+---
+
 ### `analytics_event`
 
 Poll lifecycle signals. Three named sub-events are emitted under this type:
@@ -597,7 +643,7 @@ Emitted when the objection counter increments (typically on moderation flags).
 
 ## Severity levels
 
-- **info**: `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `witness_response_capped`, `judge_recap_emitted`, `analytics_event`, `session_completed`, `broadcast_hook_triggered`, `evidence_revealed`, `objection_count_changed`
+- **info**: `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `witness_response_capped`, `judge_recap_emitted`, `token_budget_applied`, `session_token_estimate`, `analytics_event`, `session_completed`, `broadcast_hook_triggered`, `evidence_revealed`, `objection_count_changed`
 - **warn**: `moderation_action`, `vote_spam_blocked`, `broadcast_hook_failed`
 - **error**: `session_failed`
 
