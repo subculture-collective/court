@@ -36,12 +36,7 @@ test('blocks votes exceeding the rate limit', () => {
         guard.check('session-1', '127.0.0.1', 'verdict', 'guilty').allowed,
         true,
     );
-    const decision = guard.check(
-        'session-1',
-        '127.0.0.1',
-        'verdict',
-        'guilty',
-    );
+    const decision = guard.check('session-1', '127.0.0.1', 'verdict', 'guilty');
     assert.equal(decision.allowed, false);
     assert.equal(decision.reason, 'rate_limited');
 });
@@ -56,12 +51,7 @@ test('blocks duplicate votes within the duplicate window', () => {
         guard.check('session-1', '127.0.0.1', 'verdict', 'guilty').allowed,
         true,
     );
-    const decision = guard.check(
-        'session-1',
-        '127.0.0.1',
-        'verdict',
-        'guilty',
-    );
+    const decision = guard.check('session-1', '127.0.0.1', 'verdict', 'guilty');
     assert.equal(decision.allowed, false);
     assert.equal(decision.reason, 'duplicate_vote');
 });

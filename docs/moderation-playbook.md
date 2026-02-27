@@ -36,26 +36,26 @@ CLEAN COURTROOM POLICY:
 
 The filter (`src/moderation/content-filter.ts`) uses regular expression rules to detect five categories:
 
-| Reason code       | Examples of what is matched |
-|-------------------|-----------------------------|
-| `slur`            | Racial, ethnic, and homophobic slurs |
-| `hate_speech`     | Incitement phrases, genocide references |
-| `violence`        | Graphic violence and self-harm instructions |
-| `harassment`      | Doxxing references, swatting, directed self-harm |
-| `sexual_content`  | Explicit sexual language |
+| Reason code      | Examples of what is matched                      |
+| ---------------- | ------------------------------------------------ |
+| `slur`           | Racial, ethnic, and homophobic slurs             |
+| `hate_speech`    | Incitement phrases, genocide references          |
+| `violence`       | Graphic violence and self-harm instructions      |
+| `harassment`     | Doxxing references, swatting, directed self-harm |
+| `sexual_content` | Explicit sexual language                         |
 
 ### What happens when content is flagged
 
 1. The turn `dialogue` is replaced with:
-   > `[The witness statement has been redacted by the court for decorum violations.]`
+    > `[The witness statement has been redacted by the court for decorum violations.]`
 2. A `moderation_action` SSE event is emitted to all stream subscribers.
 3. The objection count is incremented and a judge redirect line is inserted to steer the scene back on track.
 4. If broadcast automation is enabled, a `moderation_alert` hook is triggered for the operator overlay.
 5. A warning is written to the server log:
 
-   ```
-   [moderation] content flagged session=<id> speaker=<agentId> reasons=<code,code>
-   ```
+    ```
+    [moderation] content flagged session=<id> speaker=<agentId> reasons=<code,code>
+    ```
 
 6. Orchestration continues normally with the sanitized text.
 
@@ -78,9 +78,9 @@ When a vote is blocked:
 - A `vote_spam_blocked` SSE event is emitted.
 - A warning is written to the server log:
 
-  ```
-  [vote-spam] blocked ip=<ip> session=<id> reason=<reason>
-  ```
+    ```
+    [vote-spam] blocked ip=<ip> session=<id> reason=<reason>
+    ```
 
 Tune limits via environment variables (see `.env` / `.env.example`):
 
@@ -100,11 +100,11 @@ Tune limits via environment variables (see `.env` / `.env.example`):
 
 1. If the session is ongoing, advance it to `final_ruling` to end the vote windows immediately:
 
-   ```bash
-   curl -s -X POST http://localhost:3001/api/court/sessions/<SESSION_ID>/phase \
-     -H 'Content-Type: application/json' \
-     -d '{"phase":"final_ruling"}'
-   ```
+    ```bash
+    curl -s -X POST http://localhost:3001/api/court/sessions/<SESSION_ID>/phase \
+      -H 'Content-Type: application/json' \
+      -d '{"phase":"final_ruling"}'
+    ```
 
 2. If the content is still harmful after redaction, terminate the session by stopping the process or, for production deployments, kill the Docker service and restart clean.
 3. Review the case prompt and revise it to remove ambiguous phrasing that may have elicited the output.
@@ -118,11 +118,11 @@ Tune limits via environment variables (see `.env` / `.env.example`):
 
 1. Manually set the next expected phase:
 
-   ```bash
-   curl -s -X POST http://localhost:3001/api/court/sessions/<SESSION_ID>/phase \
-     -H 'Content-Type: application/json' \
-     -d '{"phase":"<next_phase>"}'
-   ```
+    ```bash
+    curl -s -X POST http://localhost:3001/api/court/sessions/<SESSION_ID>/phase \
+      -H 'Content-Type: application/json' \
+      -d '{"phase":"<next_phase>"}'
+    ```
 
 2. Check server logs for errors (LLM timeout, Postgres connectivity).
 3. If the orchestrator threw and marked the session `failed`, create a new session with the same parameters.
@@ -179,8 +179,8 @@ Guidelines:
 - All options should be **clearly fictional and comedic** (no real-world punishments or humiliating personal content).
 - Keep the list between 3 and 8 options for readability.
 - Examples of safe options:
-  - "Banished to the shadow realm"
-  - "Mandatory apology haikus"
-  - "Ethics training hosted by a raccoon"
-  - "Community service in the meme archives"
-  - "Ukulele ankle-monitor probation"
+    - "Banished to the shadow realm"
+    - "Mandatory apology haikus"
+    - "Ethics training hosted by a raccoon"
+    - "Community service in the meme archives"
+    - "Ukulele ankle-monitor probation"
