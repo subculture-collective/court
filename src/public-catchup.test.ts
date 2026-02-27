@@ -18,6 +18,6 @@ test('public app wires catch-up toggle telemetry and phase refresh behavior', ()
 
     assert.match(js, /function\s+setCatchupVisible\(/);
     assert.match(js, /\[telemetry\]\s+catchup_panel_visibility/);
-    assert.match(js, /if \(payload\.type === 'phase_changed'\)/);
+    assert.match(js, /if\s*\(\s*payload\.type\s*===\s*['"]phase_changed['"]\s*\)/);
     assert.match(js, /updateCatchupPanel\(activeSession\);/);
 });

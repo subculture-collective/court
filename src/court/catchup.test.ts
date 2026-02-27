@@ -44,9 +44,29 @@ test('buildCaseSoFarSummary falls back to recent stitched turns', () => {
     assert.match(summary, /thaum: Witness detail three\./);
 });
 
+test('buildCaseSoFarSummary truncates and appends ellipsis when dialogue exceeds maxChars', () => {
+    const longDialogue = 'A'.repeat(250);
+    const turns = [makeTurn({ id: 't1', dialogue: longDialogue })];
+
+    const summary = buildCaseSoFarSummary(turns, ['t1']);
+    assert.ok(summary.endsWith('…'), 'summary should end with ellipsis');
+    assert.ok(summary.length <= 220, `summary length ${summary.length} should not exceed maxChars (220)`);
+});
+
 test('juryStepFromPhase maps vote phases to jury-live status', () => {
     assert.equal(juryStepFromPhase('verdict_vote'), 'Jury voting — verdict poll is live');
     assert.equal(juryStepFromPhase('sentence_vote'), 'Jury voting — sentence poll is live');
+});
+
+test('juryStepFromPhase returns correct label for every CourtPhase', () => {
+    assert.equal(juryStepFromPhase('case_prompt'), 'Jury pending — court intro in progress');
+    assert.equal(juryStepFromPhase('openings'), 'Jury listening — opening statements');
+    assert.equal(juryStepFromPhase('witness_exam'), 'Jury observing witness examination');
+    assert.equal(juryStepFromPhase('evidence_reveal'), 'Jury reviewing evidence reveal');
+    assert.equal(juryStepFromPhase('closings'), 'Jury preparing for verdict vote');
+    assert.equal(juryStepFromPhase('verdict_vote'), 'Jury voting — verdict poll is live');
+    assert.equal(juryStepFromPhase('sentence_vote'), 'Jury voting — sentence poll is live');
+    assert.equal(juryStepFromPhase('final_ruling'), 'Jury complete — ruling delivered');
 });
 
 test('buildCatchupView refreshes jury status when phase changes', () => {
