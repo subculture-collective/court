@@ -13,17 +13,29 @@ function App() {
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [events, setEvents] = useState<CourtEvent[]>([]);
 
-    const { connected, error } = useSSE(event => {
+    const { connected, error } = useSSE(sessionId, event => {
         setEvents(prev => [...prev, event]);
     });
 
     useEffect(() => {
         // Fetch current session on mount
-        fetch('/api/session')
-            .then(res => res.json())
+        fetch('/api/court/sessions')
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`Unexpected status ${res.status}`);
+                }
+                return res.json();
+            })
             .then(data => {
-                if (data.sessionId) {
-                    setSessionId(data.sessionId);
+                let id: string | null = null;
+
+                if (Array.isArray(data.sessions) && data.sessions.length > 0) {
+                    const first = data.sessions[0] as any;
+                    id = (first && (first.id || first.sessionId)) ?? null;
+                }
+
+                if (id) {
+                    setSessionId(id);
                 }
             })
             .catch(err => console.error('Failed to fetch session:', err));

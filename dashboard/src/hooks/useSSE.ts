@@ -1,19 +1,24 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import type { CourtEvent } from '../types';
+import type { CourtEvent, SSEMessage } from '../types';
 
-export function useSSE(onEvent: (event: CourtEvent) => void) {
+export function useSSE(
+    sessionId: string | null,
+    onEvent: (event: CourtEvent) => void,
+) {
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const connect = useCallback(() => {
-        if (eventSourceRef.current) {
+        if (eventSourceRef.current || !sessionId) {
             return;
         }
 
         try {
-            const es = new EventSource('/api/events');
+            const es = new EventSource(
+                `/api/court/sessions/${sessionId}/stream`,
+            );
             eventSourceRef.current = es;
 
             es.onopen = () => {
@@ -42,8 +47,10 @@ export function useSSE(onEvent: (event: CourtEvent) => void) {
 
             es.onmessage = e => {
                 try {
-                    const event = JSON.parse(e.data) as CourtEvent;
-                    onEvent(event);
+                    const msg = JSON.parse(e.data) as SSEMessage;
+                    if (msg.type !== 'snapshot') {
+                        onEvent(msg as CourtEvent);
+                    }
                 } catch (err) {
                     console.error('Failed to parse SSE event:', err);
                 }
@@ -52,9 +59,11 @@ export function useSSE(onEvent: (event: CourtEvent) => void) {
             console.error('Failed to create EventSource:', err);
             setError('Failed to connect to event stream');
         }
-    }, [onEvent]);
+    }, [onEvent, sessionId]);
 
     useEffect(() => {
+        if (!sessionId) return;
+
         connect();
 
         return () => {
@@ -66,7 +75,7 @@ export function useSSE(onEvent: (event: CourtEvent) => void) {
                 clearTimeout(reconnectTimeoutRef.current);
             }
         };
-    }, [connect]);
+    }, [connect, sessionId]);
 
     return { connected, error };
 }

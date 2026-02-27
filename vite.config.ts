@@ -5,6 +5,7 @@ import { resolve } from 'path';
 export default defineConfig({
     plugins: [react()],
     root: 'dashboard',
+    base: '/operator/',
     build: {
         outDir: '../dist/dashboard',
         emptyOutDir: true,

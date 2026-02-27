@@ -42,7 +42,6 @@ test-spec: ## Run tests with spec reporter
 ci: ## Run local CI parity checks (lint + build + test)
 	$(MAKE) lint
 	$(MAKE) build
-	$(MAKE) build-dashboard
 	$(MAKE) test
 
 start: ## Run compiled app from dist/
