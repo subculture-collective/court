@@ -6,6 +6,7 @@ import { AGENT_IDS, isValidAgent } from './agents.js';
 import { assignCourtRoles } from './court/roles.js';
 import { runCourtSession } from './court/orchestrator.js';
 import {
+    CourtNotFoundError,
     CourtValidationError,
     createCourtSessionStore,
 } from './store/session-store.js';
@@ -166,7 +167,10 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to cast vote';
-            const status = error instanceof CourtValidationError ? 400 : 404;
+            const status =
+                error instanceof CourtValidationError ? 400
+                : error instanceof CourtNotFoundError ? 404
+                : 500;
             return res.status(status).json({ error: message });
         }
     });
@@ -192,7 +196,10 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to set phase';
-            const status = error instanceof CourtValidationError ? 400 : 404;
+            const status =
+                error instanceof CourtValidationError ? 400
+                : error instanceof CourtNotFoundError ? 404
+                : 500;
             return res.status(status).json({ error: message });
         }
     });

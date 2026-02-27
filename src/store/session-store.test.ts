@@ -5,26 +5,35 @@ import { assignCourtRoles } from '../court/roles.js';
 import { createCourtSessionStore } from './session-store.js';
 
 async function createRunningSession() {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = '';
-    const store = await createCourtSessionStore();
-    const participants = AGENT_IDS.slice(0, 5);
-    const session = await store.createSession({
-        topic: 'Did the defendant replace all office coffee with soup?',
-        participants,
-        metadata: {
-            mode: 'improv_court',
-            casePrompt: 'Did the defendant replace all office coffee with soup?',
-            caseType: 'criminal',
-            sentenceOptions: ['Fine', 'Community service'],
-            verdictVoteWindowMs: 10,
-            sentenceVoteWindowMs: 10,
-            verdictVotes: {},
-            sentenceVotes: {},
-            roleAssignments: assignCourtRoles(participants),
-        },
-    });
-    await store.startSession(session.id);
-    return { store, sessionId: session.id };
+    try {
+        const store = await createCourtSessionStore();
+        const participants = AGENT_IDS.slice(0, 5);
+        const session = await store.createSession({
+            topic: 'Did the defendant replace all office coffee with soup?',
+            participants,
+            metadata: {
+                mode: 'improv_court',
+                casePrompt: 'Did the defendant replace all office coffee with soup?',
+                caseType: 'criminal',
+                sentenceOptions: ['Fine', 'Community service'],
+                verdictVoteWindowMs: 10,
+                sentenceVoteWindowMs: 10,
+                verdictVotes: {},
+                sentenceVotes: {},
+                roleAssignments: assignCourtRoles(participants),
+            },
+        });
+        await store.startSession(session.id);
+        return { store, sessionId: session.id };
+    } finally {
+        if (previousDatabaseUrl === undefined) {
+            delete process.env.DATABASE_URL;
+        } else {
+            process.env.DATABASE_URL = previousDatabaseUrl;
+        }
+    }
 }
 
 test('enforces deterministic phase order', async () => {
@@ -81,4 +90,28 @@ test('persists final ruling for recovery', async () => {
     assert.equal(session?.metadata.finalRuling?.verdict, 'guilty');
     assert.equal(session?.metadata.finalRuling?.sentence, 'Fine');
     assert.ok(session?.metadata.finalRuling?.decidedAt);
+});
+
+test('returned sessions are defensive copies in in-memory store', async () => {
+    const { store, sessionId } = await createRunningSession();
+    const session = await store.getSession(sessionId);
+    assert.ok(session);
+    session.phase = 'verdict_vote';
+
+    await assert.rejects(
+        store.castVote({
+            sessionId,
+            voteType: 'verdict',
+            choice: 'guilty',
+        }),
+        /Cannot cast verdict vote during phase case_prompt/,
+    );
+});
+
+test('rejects unknown phase values', async () => {
+    const { store, sessionId } = await createRunningSession();
+    await assert.rejects(
+        store.setPhase(sessionId, 'not_real' as never),
+        /Unknown next phase/,
+    );
 });

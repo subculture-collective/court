@@ -20,6 +20,17 @@ export class CourtValidationError extends Error {
     }
 }
 
+export class CourtNotFoundError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'CourtNotFoundError';
+    }
+}
+
+function deepCopy<T>(value: T): T {
+    return structuredClone(value);
+}
+
 const PHASE_SEQUENCE: CourtPhase[] = [
     'case_prompt',
     'openings',
@@ -38,6 +49,12 @@ function phaseIndex(phase: CourtPhase): number {
 function assertValidPhaseTransition(current: CourtPhase, next: CourtPhase): void {
     const currentIndex = phaseIndex(current);
     const nextIndex = phaseIndex(next);
+    if (currentIndex === -1) {
+        throw new CourtValidationError(`Unknown current phase: ${current}`);
+    }
+    if (nextIndex === -1) {
+        throw new CourtValidationError(`Unknown next phase: ${next}`);
+    }
     const isNoop = currentIndex === nextIndex;
     const isForwardStep = nextIndex === currentIndex + 1;
     const skipEvidenceReveal =
@@ -108,11 +125,11 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             id: randomUUID(),
             topic: input.topic,
             status: 'pending',
-            participants: input.participants,
+            participants: deepCopy(input.participants),
             phase: 'case_prompt',
             turnCount: 0,
             turns: [],
-            metadata: input.metadata,
+            metadata: deepCopy(input.metadata),
             createdAt: new Date().toISOString(),
         };
 
@@ -120,20 +137,22 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         this.publish({
             sessionId: session.id,
             type: 'session_created',
-            payload: { session },
+            payload: { session: deepCopy(session) },
         });
 
-        return session;
+        return deepCopy(session);
     }
 
     async listSessions(): Promise<CourtSession[]> {
-        return [...this.sessions.values()].sort((a, b) =>
+        const sorted = [...this.sessions.values()].sort((a, b) =>
             a.createdAt < b.createdAt ? 1 : -1,
         );
+        return deepCopy(sorted);
     }
 
     async getSession(sessionId: string): Promise<CourtSession | undefined> {
-        return this.sessions.get(sessionId);
+        const session = this.sessions.get(sessionId);
+        return session ? deepCopy(session) : undefined;
     }
 
     async startSession(sessionId: string): Promise<CourtSession> {
@@ -147,7 +166,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             payload: { sessionId, startedAt: session.startedAt },
         });
 
-        return session;
+        return deepCopy(session);
     }
 
     async setPhase(
@@ -174,7 +193,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             },
         });
 
-        return session;
+        return deepCopy(session);
     }
 
     async addTurn(input: {
@@ -206,7 +225,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             payload: { turn },
         });
 
-        return turn;
+        return deepCopy(turn);
     }
 
     async castVote(input: {
@@ -256,7 +275,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             },
         });
 
-        return session;
+        return deepCopy(session);
     }
 
     async recordFinalRuling(input: {
@@ -270,7 +289,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             sentence: input.sentence,
             decidedAt: new Date().toISOString(),
         };
-        return session;
+        return deepCopy(session);
     }
 
     async completeSession(sessionId: string): Promise<CourtSession> {
@@ -284,7 +303,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             payload: { sessionId, completedAt: session.completedAt },
         });
 
-        return session;
+        return deepCopy(session);
     }
 
     async failSession(
@@ -302,7 +321,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             payload: { sessionId, reason, completedAt: session.completedAt },
         });
 
-        return session;
+        return deepCopy(session);
     }
 
     async recoverInterruptedSessions(): Promise<string[]> {
@@ -340,7 +359,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
     private mustGet(sessionId: string): CourtSession {
         const session = this.sessions.get(sessionId);
         if (!session) {
-            throw new Error(`Session not found: ${sessionId}`);
+            throw new CourtNotFoundError(`Session not found: ${sessionId}`);
         }
         return session;
     }
@@ -467,7 +486,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         `;
 
         if (!row) {
-            throw new Error(`Session not found: ${sessionId}`);
+            throw new CourtNotFoundError(`Session not found: ${sessionId}`);
         }
 
         const turns = await this.fetchTurns(sessionId);
@@ -496,7 +515,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             `;
 
             if (!current) {
-                throw new Error(`Session not found: ${sessionId}`);
+                throw new CourtNotFoundError(`Session not found: ${sessionId}`);
             }
             assertValidPhaseTransition(current.phase, phase);
 
@@ -551,7 +570,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             `;
 
             if (!session) {
-                throw new Error(`Session not found: ${input.sessionId}`);
+                throw new CourtNotFoundError(
+                    `Session not found: ${input.sessionId}`,
+                );
             }
 
             const turnId = randomUUID();
@@ -621,7 +642,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             `;
 
             if (!current) {
-                throw new Error(`Session not found: ${input.sessionId}`);
+                throw new CourtNotFoundError(
+                    `Session not found: ${input.sessionId}`,
+                );
             }
 
             const metadata = {
@@ -700,7 +723,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             `;
 
             if (!current) {
-                throw new Error(`Session not found: ${input.sessionId}`);
+                throw new CourtNotFoundError(
+                    `Session not found: ${input.sessionId}`,
+                );
             }
 
             const metadata = {
@@ -736,7 +761,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         `;
 
         if (!row) {
-            throw new Error(`Session not found: ${sessionId}`);
+            throw new CourtNotFoundError(`Session not found: ${sessionId}`);
         }
 
         const turns = await this.fetchTurns(sessionId);
@@ -765,7 +790,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         `;
 
         if (!row) {
-            throw new Error(`Session not found: ${sessionId}`);
+            throw new CourtNotFoundError(`Session not found: ${sessionId}`);
         }
 
         const turns = await this.fetchTurns(sessionId);
@@ -821,7 +846,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             sessionId: input.sessionId,
             type: input.type,
             at: new Date().toISOString(),
-            payload: input.payload,
+            payload: deepCopy(input.payload),
         };
 
         this.eventEmitter.emit(this.channel(input.sessionId), event);
