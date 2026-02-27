@@ -131,8 +131,8 @@ Run monthly in staging:
 4. Verify recovery:
    - `/api/health` returns success.
    - New sessions can be created.
-  - Existing interrupted `running` sessions are resumed automatically when using Postgres-backed storage (`recoverInterruptedSessions` returns IDs for restart).
-  - With in-memory storage, interrupted sessions are not recoverable across process restarts.
+   - Existing interrupted `running` sessions are resumed automatically when using Postgres-backed storage (`recoverInterruptedSessions` returns IDs for restart).
+   - With in-memory storage, interrupted sessions are not recoverable across process restarts.
 5. Simulate DB interruption: `docker compose stop db` (wait 30s) then `docker compose start db`.
 6. Confirm API health returns after DB health check passes.
 7. Record drill timestamp, operator, and outcome in team incident log.
