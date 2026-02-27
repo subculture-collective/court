@@ -7,14 +7,14 @@ It does **not** depend on `subcult-corp` at runtime.
 
 ## Documentation
 
-| Document | Description |
-|---|---|
+| Document                                                                               | Description                                                                            |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | [docs/ADR-001-improv-court-architecture.md](docs/ADR-001-improv-court-architecture.md) | Architecture Decision Record: runtime boundaries, data contracts, and phase invariants |
-| [docs/architecture.md](docs/architecture.md) | System architecture, agent roles, and phase flow |
-| [docs/api.md](docs/api.md) | REST API endpoints, schemas, and SSE event contracts |
-| [docs/operator-runbook.md](docs/operator-runbook.md) | Setup, configuration, deployment, and monitoring |
-| [docs/moderation-playbook.md](docs/moderation-playbook.md) | Content moderation system and incident procedures |
-| [docs/event-taxonomy.md](docs/event-taxonomy.md) | Canonical event taxonomy, payload schemas, and logging guidelines |
+| [docs/architecture.md](docs/architecture.md)                                           | System architecture, agent roles, and phase flow                                       |
+| [docs/api.md](docs/api.md)                                                             | REST API endpoints, schemas, and SSE event contracts                                   |
+| [docs/operator-runbook.md](docs/operator-runbook.md)                                   | Setup, configuration, deployment, and monitoring                                       |
+| [docs/moderation-playbook.md](docs/moderation-playbook.md)                             | Content moderation system and incident procedures                                      |
+| [docs/event-taxonomy.md](docs/event-taxonomy.md)                                       | Canonical event taxonomy, payload schemas, and logging guidelines                      |
 
 ## What is implemented
 
@@ -31,9 +31,9 @@ It does **not** depend on `subcult-corp` at runtime.
 - Jury verdict and sentence voting endpoints
 - Deterministic phase-order and vote-window enforcement
 - Minimal stripped web UI (`public/index.html`)
-  - Overlay shell with phase timer, active speaker, and live captions
-  - Verdict/sentence poll bars with live percentages and phase-gated voting
-  - SSE analytics events for poll start/close and vote completion
+    - Overlay shell with phase timer, active speaker, and live captions
+    - Verdict/sentence poll bars with live percentages and phase-gated voting
+    - SSE analytics events for poll start/close and vote completion
 
 ## Environment
 
@@ -45,6 +45,7 @@ Key variables:
 - `LLM_MODEL`
 - `PORT`
 - `DATABASE_URL` (Postgres connection string for durable persistence)
+- `TTS_PROVIDER` (`noop` or `mock`; defaults to `noop`)
 - `VERDICT_VOTE_WINDOW_MS`
 - `SENTENCE_VOTE_WINDOW_MS`
 
@@ -52,6 +53,8 @@ If `OPENROUTER_API_KEY` is empty, the app falls back to deterministic mock dialo
 
 If `DATABASE_URL` is set, the app uses Postgres-backed persistence and runs migrations at startup.
 If `DATABASE_URL` is missing, the app falls back to in-memory storage (non-durable).
+
+`TTS_PROVIDER=noop` keeps TTS silent (default). `TTS_PROVIDER=mock` records adapter calls for local/testing workflows without requiring an external speech provider.
 
 ## Run
 

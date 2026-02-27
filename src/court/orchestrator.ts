@@ -1,6 +1,7 @@
 import { AGENTS } from '../agents.js';
 import { llmGenerate, sanitizeDialogue } from '../llm/client.js';
 import { moderateContent } from '../moderation/content-filter.js';
+import { createTTSAdapterFromEnv, type TTSAdapter } from '../tts/adapter.js';
 import type {
     AgentId,
     CaseType,
@@ -76,9 +77,10 @@ async function generateTurn(input: {
         role,
         phase: session.phase,
         dialogue: moderation.sanitized,
-        moderationResult: moderation.flagged ?
-            { flagged: true, reasons: moderation.reasons }
-        :   undefined,
+        moderationResult:
+            moderation.flagged ?
+                { flagged: true, reasons: moderation.reasons }
+            :   undefined,
     });
 }
 
@@ -88,11 +90,46 @@ function verdictOptions(caseType: CaseType): string[] {
         :   ['guilty', 'not_guilty'];
 }
 
+export interface RunCourtSessionOptions {
+    ttsAdapter?: TTSAdapter;
+    sleepFn?: (ms: number) => Promise<void>;
+}
+
 export async function runCourtSession(
     sessionId: string,
     store: CourtSessionStore,
+    options: RunCourtSessionOptions = {},
 ): Promise<void> {
     const session = await store.startSession(sessionId);
+    const tts = options.ttsAdapter ?? createTTSAdapterFromEnv();
+    const pause = options.sleepFn ?? sleep;
+    const ttsMetrics = {
+        success: 0,
+        failure: 0,
+    };
+
+    const safelySpeak = async (
+        action: 'speakCue' | 'speakVerdict' | 'speakRecap',
+        invoke: () => Promise<void>,
+    ): Promise<void> => {
+        const started = Date.now();
+        try {
+            await invoke();
+            ttsMetrics.success += 1;
+            // eslint-disable-next-line no-console
+            console.info(
+                `[tts] status=success action=${action} provider=${tts.provider} session=${session.id} latencyMs=${Date.now() - started}`,
+            );
+        } catch (error) {
+            ttsMetrics.failure += 1;
+            const message =
+                error instanceof Error ? error.message : 'unknown tts error';
+            // eslint-disable-next-line no-console
+            console.warn(
+                `[tts] status=failure action=${action} provider=${tts.provider} session=${session.id} latencyMs=${Date.now() - started} reason=${message}`,
+            );
+        }
+    };
 
     try {
         const { judge, prosecutor, defense, witnesses, bailiff } =
@@ -100,17 +137,32 @@ export async function runCourtSession(
 
         session.phase = 'case_prompt';
         await store.setPhase(session.id, 'case_prompt', 8_000);
+        const allRiseCue = `All rise. The Court of Improvised Absurdity is now in session. Case: ${session.topic}`;
+        await safelySpeak('speakCue', () =>
+            tts.speakCue({
+                sessionId: session.id,
+                phase: 'case_prompt',
+                text: allRiseCue,
+            }),
+        );
         await store.addTurn({
             sessionId: session.id,
             speaker: bailiff,
             role: 'bailiff',
             phase: 'case_prompt',
-            dialogue: `All rise. The Court of Improvised Absurdity is now in session. Case: ${session.topic}`,
+            dialogue: allRiseCue,
         });
-        await sleep(1_200);
+        await pause(1_200);
 
         session.phase = 'openings';
         await store.setPhase(session.id, 'openings', 30_000);
+        await safelySpeak('speakCue', () =>
+            tts.speakCue({
+                sessionId: session.id,
+                phase: 'openings',
+                text: 'Opening statements begin now. Prosecution may proceed.',
+            }),
+        );
         await generateTurn({
             store,
             session,
@@ -119,7 +171,7 @@ export async function runCourtSession(
             userInstruction:
                 'Deliver your opening statement and explain why the court should lean toward conviction/liability.',
         });
-        await sleep(900);
+        await pause(900);
         await generateTurn({
             store,
             session,
@@ -131,7 +183,14 @@ export async function runCourtSession(
 
         session.phase = 'witness_exam';
         await store.setPhase(session.id, 'witness_exam', 40_000);
-        await sleep(600);
+        await safelySpeak('speakCue', () =>
+            tts.speakCue({
+                sessionId: session.id,
+                phase: 'witness_exam',
+                text: 'Witness examination begins. The court will hear testimony.',
+            }),
+        );
+        await pause(600);
 
         const activeWitnesses = witnesses.slice(
             0,
@@ -147,7 +206,7 @@ export async function runCourtSession(
                 role: 'judge',
                 userInstruction: `Ask witness ${index + 1} a focused question about the core accusation.`,
             });
-            await sleep(600);
+            await pause(600);
 
             await generateTurn({
                 store,
@@ -157,7 +216,7 @@ export async function runCourtSession(
                 userInstruction:
                     'Provide testimony in 1-3 sentences with one concrete detail and one comedic detail.',
             });
-            await sleep(600);
+            await pause(600);
 
             await generateTurn({
                 store,
@@ -167,7 +226,7 @@ export async function runCourtSession(
                 userInstruction:
                     'Cross-examine this witness with one pointed challenge.',
             });
-            await sleep(600);
+            await pause(600);
 
             await generateTurn({
                 store,
@@ -180,7 +239,7 @@ export async function runCourtSession(
 
             exchangeCount += 1;
             if (exchangeCount % 2 === 0) {
-                await sleep(600);
+                await pause(600);
                 await generateTurn({
                     store,
                     session,
@@ -189,13 +248,27 @@ export async function runCourtSession(
                     userInstruction:
                         'Give a two-sentence recap of what matters so far and keep the jury oriented.',
                 });
+                await safelySpeak('speakRecap', () =>
+                    tts.speakRecap({
+                        sessionId: session.id,
+                        phase: 'witness_exam',
+                        text: 'The court has issued a recap for the jury.',
+                    }),
+                );
             }
 
-            await sleep(800);
+            await pause(800);
         }
 
         session.phase = 'closings';
         await store.setPhase(session.id, 'closings', 30_000);
+        await safelySpeak('speakCue', () =>
+            tts.speakCue({
+                sessionId: session.id,
+                phase: 'closings',
+                text: 'Closing arguments begin now.',
+            }),
+        );
         await generateTurn({
             store,
             session,
@@ -204,7 +277,7 @@ export async function runCourtSession(
             userInstruction:
                 'Deliver closing argument in 2-4 sentences with one memorable line.',
         });
-        await sleep(800);
+        await pause(800);
         await generateTurn({
             store,
             session,
@@ -229,7 +302,14 @@ export async function runCourtSession(
             phase: 'verdict_vote',
             dialogue: `Jury poll is open: ${verdictChoices.join(' / ')}. Cast your votes now.`,
         });
-        await sleep(session.metadata.verdictVoteWindowMs);
+        await safelySpeak('speakCue', () =>
+            tts.speakCue({
+                sessionId: session.id,
+                phase: 'verdict_vote',
+                text: `Verdict poll is now open: ${verdictChoices.join(' or ')}.`,
+            }),
+        );
+        await pause(session.metadata.verdictVoteWindowMs);
 
         session.phase = 'sentence_vote';
         await store.setPhase(
@@ -244,10 +324,24 @@ export async function runCourtSession(
             phase: 'sentence_vote',
             dialogue: `Sentence poll is now open. Options: ${session.metadata.sentenceOptions.join(' | ')}`,
         });
-        await sleep(session.metadata.sentenceVoteWindowMs);
+        await safelySpeak('speakCue', () =>
+            tts.speakCue({
+                sessionId: session.id,
+                phase: 'sentence_vote',
+                text: 'Sentence poll is now open. The jury may vote.',
+            }),
+        );
+        await pause(session.metadata.sentenceVoteWindowMs);
 
         session.phase = 'final_ruling';
         await store.setPhase(session.id, 'final_ruling', 20_000);
+        await safelySpeak('speakCue', () =>
+            tts.speakCue({
+                sessionId: session.id,
+                phase: 'final_ruling',
+                text: 'All rise for the final ruling.',
+            }),
+        );
 
         const latest = await store.getSession(session.id);
         if (!latest) {
@@ -270,6 +364,14 @@ export async function runCourtSession(
             sentence: winningSentence,
         });
 
+        await safelySpeak('speakVerdict', () =>
+            tts.speakVerdict({
+                sessionId: session.id,
+                verdict: winningVerdict,
+                sentence: winningSentence,
+            }),
+        );
+
         await generateTurn({
             store,
             session,
@@ -285,5 +387,10 @@ export async function runCourtSession(
                 error.message
             :   'Unknown orchestration error';
         await store.failSession(session.id, message);
+    } finally {
+        // eslint-disable-next-line no-console
+        console.info(
+            `[tts] session=${session.id} provider=${tts.provider} success=${ttsMetrics.success} failure=${ttsMetrics.failure}`,
+        );
     }
 }

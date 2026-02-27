@@ -67,6 +67,16 @@ export interface CourtSessionMetadata {
     sentenceVoteWindowMs: number;
     verdictVotes: Record<string, number>;
     sentenceVotes: Record<string, number>;
+    voteSnapshots?: {
+        verdict?: {
+            closedAt: string;
+            votes: Record<string, number>;
+        };
+        sentence?: {
+            closedAt: string;
+            votes: Record<string, number>;
+        };
+    };
     finalRuling?: {
         verdict: string;
         sentence: string;
@@ -110,6 +120,7 @@ export type CourtEventType =
     | 'phase_changed'
     | 'turn'
     | 'vote_updated'
+    | 'vote_closed'
     | 'analytics_event'
     | 'moderation_action'
     | 'vote_spam_blocked'

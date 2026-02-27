@@ -46,7 +46,17 @@ export interface VoteUpdatedPayload {
     sentenceVotes: Record<string, number>;
 }
 
-export type AnalyticsEventName = 'poll_started' | 'vote_completed' | 'poll_closed';
+export interface VoteClosedPayload {
+    pollType: 'verdict' | 'sentence';
+    closedAt: string; // ISO 8601
+    votes: Record<string, number>;
+    nextPhase: CourtPhase;
+}
+
+export type AnalyticsEventName =
+    | 'poll_started'
+    | 'vote_completed'
+    | 'poll_closed';
 
 export interface AnalyticsEventPayload {
     name: AnalyticsEventName;
@@ -89,10 +99,7 @@ function hasStringKeys(
     return keys.every(k => typeof payload[k] === 'string');
 }
 
-function hasObjectKey(
-    payload: Record<string, unknown>,
-    key: string,
-): boolean {
+function hasObjectKey(payload: Record<string, unknown>, key: string): boolean {
     return (
         payload[key] !== null &&
         typeof payload[key] === 'object' &&
@@ -148,6 +155,21 @@ export function assertEventPayload(event: CourtEvent): void {
             ) {
                 throw new TypeError(
                     `vote_updated payload missing required fields: voteType, choice, verdictVotes, sentenceVotes`,
+                );
+            }
+            break;
+
+        case 'vote_closed':
+            if (
+                !hasStringKeys(payload, [
+                    'pollType',
+                    'closedAt',
+                    'nextPhase',
+                ]) ||
+                !hasObjectKey(payload, 'votes')
+            ) {
+                throw new TypeError(
+                    `vote_closed payload missing required fields: pollType, closedAt, votes, nextPhase`,
                 );
             }
             break;

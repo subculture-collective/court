@@ -46,7 +46,10 @@ function phaseIndex(phase: CourtPhase): number {
     return PHASE_SEQUENCE.indexOf(phase);
 }
 
-function assertValidPhaseTransition(current: CourtPhase, next: CourtPhase): void {
+function assertValidPhaseTransition(
+    current: CourtPhase,
+    next: CourtPhase,
+): void {
     const currentIndex = phaseIndex(current);
     const nextIndex = phaseIndex(next);
     if (currentIndex === -1) {
@@ -72,7 +75,9 @@ function allowedVerdictChoices(caseType: CaseType): string[] {
         :   ['guilty', 'not_guilty'];
 }
 
-function pollTypeForPhase(phase: CourtPhase): 'verdict' | 'sentence' | undefined {
+function pollTypeForPhase(
+    phase: CourtPhase,
+): 'verdict' | 'sentence' | undefined {
     if (phase === 'verdict_vote') return 'verdict';
     if (phase === 'sentence_vote') return 'sentence';
     return undefined;
@@ -195,8 +200,37 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         session.phase = phase;
         session.metadata.phaseStartedAt = new Date().toISOString();
 
+        let voteClosedPayload:
+            | {
+                  pollType: 'verdict' | 'sentence';
+                  closedAt: string;
+                  votes: Record<string, number>;
+                  nextPhase: CourtPhase;
+              }
+            | undefined;
+
         if (phaseDurationMs != null) {
             session.metadata.phaseDurationMs = phaseDurationMs;
+        }
+
+        const closingPoll = pollTypeForPhase(previousPhase);
+        if (closingPoll && previousPhase !== phase) {
+            const closedAt = new Date().toISOString();
+            const votes =
+                closingPoll === 'verdict' ?
+                    { ...session.metadata.verdictVotes }
+                :   { ...session.metadata.sentenceVotes };
+            session.metadata.voteSnapshots ??= {};
+            session.metadata.voteSnapshots[closingPoll] = {
+                closedAt,
+                votes,
+            };
+            voteClosedPayload = {
+                pollType: closingPoll,
+                closedAt,
+                votes,
+                nextPhase: phase,
+            };
         }
 
         this.publish({
@@ -209,14 +243,19 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             },
         });
 
-        const closingPoll = pollTypeForPhase(previousPhase);
-        if (closingPoll && previousPhase !== phase) {
+        if (voteClosedPayload) {
+            this.publish({
+                sessionId,
+                type: 'vote_closed',
+                payload: voteClosedPayload,
+            });
+
             this.publish({
                 sessionId,
                 type: 'analytics_event',
                 payload: {
                     name: 'poll_closed',
-                    pollType: closingPoll,
+                    pollType: voteClosedPayload.pollType,
                     phase,
                 },
             });
@@ -294,7 +333,8 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
     }): Promise<CourtSession> {
         const session = this.mustGet(input.sessionId);
         if (
-            (input.voteType === 'verdict' && session.phase !== 'verdict_vote') ||
+            (input.voteType === 'verdict' &&
+                session.phase !== 'verdict_vote') ||
             (input.voteType === 'sentence' && session.phase !== 'sentence_vote')
         ) {
             throw new CourtValidationError(
@@ -303,7 +343,9 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         }
 
         if (input.voteType === 'verdict') {
-            const validChoices = allowedVerdictChoices(session.metadata.caseType);
+            const validChoices = allowedVerdictChoices(
+                session.metadata.caseType,
+            );
             if (!validChoices.includes(input.choice)) {
                 throw new CourtValidationError(
                     `Invalid verdict choice: ${input.choice}. Valid choices: ${validChoices.join(', ')}`,
@@ -393,6 +435,8 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
     }
 
     async recoverInterruptedSessions(): Promise<string[]> {
+        // In-memory store loses all state on restart,
+        // so there are never any sessions to recover
         return [];
     }
 
@@ -603,6 +647,34 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 metadata.phaseDurationMs = phaseDurationMs;
             }
 
+            const closingPoll = pollTypeForPhase(current.phase);
+            let voteClosedPayload:
+                | {
+                      pollType: 'verdict' | 'sentence';
+                      closedAt: string;
+                      votes: Record<string, number>;
+                      nextPhase: CourtPhase;
+                  }
+                | undefined;
+            if (closingPoll && current.phase !== phase) {
+                const closedAt = new Date().toISOString();
+                const votes =
+                    closingPoll === 'verdict' ?
+                        { ...(metadata.verdictVotes ?? {}) }
+                    :   { ...(metadata.sentenceVotes ?? {}) };
+                metadata.voteSnapshots ??= {};
+                metadata.voteSnapshots[closingPoll] = {
+                    closedAt,
+                    votes,
+                };
+                voteClosedPayload = {
+                    pollType: closingPoll,
+                    closedAt,
+                    votes,
+                    nextPhase: phase,
+                };
+            }
+
             const [updated] = await tx<SessionRow[]>`
                 UPDATE court_sessions
                 SET phase = ${phase},
@@ -614,6 +686,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             return {
                 updated,
                 previousPhase: current.phase,
+                voteClosedPayload,
             };
         });
 
@@ -630,14 +703,19 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             },
         });
 
-        const closingPoll = pollTypeForPhase(result.previousPhase);
-        if (closingPoll && result.previousPhase !== phase) {
+        if (result.voteClosedPayload) {
+            this.publish({
+                sessionId,
+                type: 'vote_closed',
+                payload: result.voteClosedPayload,
+            });
+
             this.publish({
                 sessionId,
                 type: 'analytics_event',
                 payload: {
                     name: 'poll_closed',
-                    pollType: closingPoll,
+                    pollType: result.voteClosedPayload.pollType,
                     phase,
                 },
             });
@@ -937,18 +1015,12 @@ class PostgresCourtSessionStore implements CourtSessionStore {
     }
 
     async recoverInterruptedSessions(): Promise<string[]> {
-        await this.db`
-            UPDATE court_sessions
-            SET status = 'failed',
-                failure_reason = COALESCE(failure_reason, 'Interrupted by server restart'),
-                completed_at = COALESCE(completed_at, NOW())
-            WHERE status = 'running'
-        `;
-
+        // Return IDs of sessions that were running when the server stopped
+        // These can be resumed by the orchestrator
         const rows = await this.db<Array<{ id: string }>>`
             SELECT id
             FROM court_sessions
-            WHERE status = 'pending'
+            WHERE status = 'running'
             ORDER BY created_at ASC
         `;
 

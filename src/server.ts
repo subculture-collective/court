@@ -8,6 +8,7 @@ import { runCourtSession } from './court/orchestrator.js';
 import {
     CourtNotFoundError,
     CourtValidationError,
+    type CourtSessionStore,
     createCourtSessionStore,
 } from './store/session-store.js';
 import { VoteSpamGuard } from './moderation/vote-spam.js';
@@ -24,9 +25,30 @@ const validPhases: CourtPhase[] = [
     'final_ruling',
 ];
 
-async function bootstrap(): Promise<void> {
+function sendError(
+    res: Response,
+    status: number,
+    code: string,
+    error: string,
+): Response {
+    return res.status(status).json({ code, error });
+}
+
+export interface CreateServerAppOptions {
+    autoRunCourtSession?: boolean;
+    store?: CourtSessionStore;
+}
+
+export async function createServerApp(
+    options: CreateServerAppOptions = {},
+): Promise<{
+    app: ReturnType<typeof express>;
+    store: CourtSessionStore;
+    dispose: () => void;
+}> {
     const app = express();
-    const store = await createCourtSessionStore();
+    const store = options.store ?? (await createCourtSessionStore());
+    const autoRunCourtSession = options.autoRunCourtSession ?? true;
 
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -43,7 +65,10 @@ async function bootstrap(): Promise<void> {
 
     const voteSpamGuard = new VoteSpamGuard();
     const PRUNE_INTERVAL_MS = 60_000;
-    const pruneTimer = setInterval(() => voteSpamGuard.prune(), PRUNE_INTERVAL_MS);
+    const pruneTimer = setInterval(
+        () => voteSpamGuard.prune(),
+        PRUNE_INTERVAL_MS,
+    );
     pruneTimer.unref();
 
     app.use(express.json());
@@ -61,7 +86,12 @@ async function bootstrap(): Promise<void> {
     app.get('/api/court/sessions/:id', async (req, res) => {
         const session = await store.getSession(req.params.id);
         if (!session) {
-            return res.status(404).json({ error: 'Session not found' });
+            return sendError(
+                res,
+                404,
+                'SESSION_NOT_FOUND',
+                'Session not found',
+            );
         }
         return res.json({ session });
     });
@@ -74,9 +104,12 @@ async function bootstrap(): Promise<void> {
                 :   '';
 
             if (topic.length < 10) {
-                return res
-                    .status(400)
-                    .json({ error: 'topic must be at least 10 characters' });
+                return sendError(
+                    res,
+                    400,
+                    'INVALID_TOPIC',
+                    'topic must be at least 10 characters',
+                );
             }
 
             const caseType: CaseType =
@@ -92,9 +125,12 @@ async function bootstrap(): Promise<void> {
             );
 
             if (participants.length < 4) {
-                return res.status(400).json({
-                    error: 'participants must include at least 4 valid agent IDs',
-                });
+                return sendError(
+                    res,
+                    400,
+                    'INVALID_PARTICIPANTS',
+                    'participants must include at least 4 valid agent IDs',
+                );
             }
 
             const sentenceOptions =
@@ -131,7 +167,9 @@ async function bootstrap(): Promise<void> {
                 },
             });
 
-            void runCourtSession(session.id, store);
+            if (autoRunCourtSession) {
+                void runCourtSession(session.id, store);
+            }
 
             return res.status(201).json({ session });
         } catch (error) {
@@ -139,7 +177,7 @@ async function bootstrap(): Promise<void> {
                 error instanceof Error ?
                     error.message
                 :   'Failed to create session';
-            return res.status(500).json({ error: message });
+            return sendError(res, 500, 'SESSION_CREATE_FAILED', message);
         }
     });
 
@@ -149,13 +187,21 @@ async function bootstrap(): Promise<void> {
             typeof req.body?.choice === 'string' ? req.body.choice.trim() : '';
 
         if (voteType !== 'verdict' && voteType !== 'sentence') {
-            return res
-                .status(400)
-                .json({ error: "type must be 'verdict' or 'sentence'" });
+            return sendError(
+                res,
+                400,
+                'INVALID_VOTE_TYPE',
+                "type must be 'verdict' or 'sentence'",
+            );
         }
 
         if (!choice) {
-            return res.status(400).json({ error: 'choice is required' });
+            return sendError(
+                res,
+                400,
+                'MISSING_VOTE_CHOICE',
+                'choice is required',
+            );
         }
 
         const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
@@ -168,9 +214,10 @@ async function bootstrap(): Promise<void> {
                 ip: clientIp,
                 voteType,
             });
-            return res
-                .status(429)
-                .json({ error: 'Too many votes. Please slow down.' });
+            return res.status(429).json({
+                code: 'VOTE_RATE_LIMITED',
+                error: 'Too many votes. Please slow down.',
+            });
         }
 
         try {
@@ -192,7 +239,11 @@ async function bootstrap(): Promise<void> {
                 error instanceof CourtValidationError ? 400
                 : error instanceof CourtNotFoundError ? 404
                 : 500;
-            return res.status(status).json({ error: message });
+            const code =
+                error instanceof CourtValidationError ? 'VOTE_REJECTED'
+                : error instanceof CourtNotFoundError ? 'SESSION_NOT_FOUND'
+                : 'VOTE_FAILED';
+            return sendError(res, status, code, message);
         }
     });
 
@@ -204,7 +255,7 @@ async function bootstrap(): Promise<void> {
             :   undefined;
 
         if (!validPhases.includes(phase)) {
-            return res.status(400).json({ error: 'invalid phase' });
+            return sendError(res, 400, 'INVALID_PHASE', 'invalid phase');
         }
 
         try {
@@ -221,7 +272,12 @@ async function bootstrap(): Promise<void> {
                 error instanceof CourtValidationError ? 400
                 : error instanceof CourtNotFoundError ? 404
                 : 500;
-            return res.status(status).json({ error: message });
+            const code =
+                error instanceof CourtValidationError ?
+                    'INVALID_PHASE_TRANSITION'
+                : error instanceof CourtNotFoundError ? 'SESSION_NOT_FOUND'
+                : 'PHASE_SET_FAILED';
+            return sendError(res, status, code, message);
         }
     });
 
@@ -230,7 +286,12 @@ async function bootstrap(): Promise<void> {
         async (req: Request, res: Response) => {
             const session = await store.getSession(req.params.id);
             if (!session) {
-                return res.status(404).json({ error: 'Session not found' });
+                return sendError(
+                    res,
+                    404,
+                    'SESSION_NOT_FOUND',
+                    'Session not found',
+                );
             }
 
             res.setHeader('Content-Type', 'text/event-stream');
@@ -268,9 +329,23 @@ async function bootstrap(): Promise<void> {
     });
 
     const restartPendingIds = await store.recoverInterruptedSessions();
-    for (const sessionId of restartPendingIds) {
-        void runCourtSession(sessionId, store);
+    if (autoRunCourtSession) {
+        for (const sessionId of restartPendingIds) {
+            void runCourtSession(sessionId, store);
+        }
     }
+
+    return {
+        app,
+        store,
+        dispose: () => {
+            clearInterval(pruneTimer);
+        },
+    };
+}
+
+export async function bootstrap(): Promise<void> {
+    const { app } = await createServerApp();
 
     const port = Number.parseInt(process.env.PORT ?? '3001', 10);
     app.listen(port, () => {
@@ -279,8 +354,16 @@ async function bootstrap(): Promise<void> {
     });
 }
 
-bootstrap().catch(error => {
-    // eslint-disable-next-line no-console
-    console.error(error);
-    process.exit(1);
-});
+const isMainModule = (() => {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    return path.resolve(entry) === fileURLToPath(import.meta.url);
+})();
+
+if (isMainModule) {
+    bootstrap().catch(error => {
+        // eslint-disable-next-line no-console
+        console.error(error);
+        process.exit(1);
+    });
+}
