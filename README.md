@@ -90,6 +90,10 @@ If port `3001` is already in use on your machine, set `API_HOST_PORT` in `.env` 
 
 If you need host access to Postgres, add a `ports` mapping to the `db` service in `docker-compose.yml` (for example `"5433:5432"` to avoid conflicts with local Postgres).
 
+## Operations runbook (staging)
+
+See `docs/ops-runbook.md` for the repeatable staging deploy path, core SLI dashboard definitions, alert thresholds, and incident drill/recovery steps.
+
 ## API
 
 - `GET /api/health`
