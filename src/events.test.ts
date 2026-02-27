@@ -22,9 +22,7 @@ function makeEvent(
 
 test('assertEventPayload: session_created valid', () => {
     assert.doesNotThrow(() =>
-        assertEventPayload(
-            makeEvent('session_created', { sessionId: 'abc' }),
-        ),
+        assertEventPayload(makeEvent('session_created', { sessionId: 'abc' })),
     );
 });
 
@@ -78,6 +76,19 @@ test('assertEventPayload: vote_updated valid', () => {
                 choice: 'guilty',
                 verdictVotes: { guilty: 1 },
                 sentenceVotes: {},
+            }),
+        ),
+    );
+});
+
+test('assertEventPayload: vote_closed valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('vote_closed', {
+                pollType: 'verdict',
+                closedAt: new Date().toISOString(),
+                votes: { guilty: 3, not_guilty: 2 },
+                nextPhase: 'sentence_vote',
             }),
         ),
     );
@@ -221,6 +232,20 @@ test('assertEventPayload: vote_updated missing verdictVotes', () => {
                     voteType: 'verdict',
                     choice: 'guilty',
                     sentenceVotes: {},
+                }),
+            ),
+        TypeError,
+    );
+});
+
+test('assertEventPayload: vote_closed missing votes', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('vote_closed', {
+                    pollType: 'verdict',
+                    closedAt: new Date().toISOString(),
+                    nextPhase: 'sentence_vote',
                 }),
             ),
         TypeError,

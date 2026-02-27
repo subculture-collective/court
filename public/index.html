@@ -125,6 +125,19 @@
                 gap: 8px;
             }
 
+            .banner {
+                border: 1px solid #4f2f35;
+                background: color-mix(in srgb, var(--danger) 12%, #1a1216);
+                color: #ffd8de;
+                border-radius: 10px;
+                font-size: 13px;
+                padding: 8px 10px;
+            }
+
+            .hidden {
+                display: none;
+            }
+
             .overlay-row {
                 display: flex;
                 justify-content: space-between;
@@ -138,6 +151,31 @@
                 color: var(--text);
                 border-left: 3px solid #3b4160;
                 padding-left: 8px;
+            }
+
+            .timer-track {
+                width: 100%;
+                height: 7px;
+                border-radius: 999px;
+                background: #2b2f41;
+                overflow: hidden;
+            }
+
+            .timer-fill {
+                height: 100%;
+                width: 0%;
+                background: linear-gradient(90deg, #6f8dff, #88b4ff);
+                transition: width 180ms linear;
+            }
+
+            .speaker-live {
+                color: #d9e6ff;
+                text-shadow: 0 0 12px #88b4ff66;
+            }
+
+            .loading {
+                opacity: 0.65;
+                cursor: wait;
             }
 
             #feed {
@@ -241,6 +279,8 @@
                     style="border-color: #2b2f41; opacity: 0.6; margin: 16px 0"
                 />
 
+                <div id="connectionBanner" class="banner hidden"></div>
+
                 <div class="phase">
                     <div>
                         <h3 style="margin: 0">Live Transcript</h3>
@@ -254,6 +294,9 @@
                     <div class="overlay-row">
                         <span>⏱️ Phase timer</span>
                         <span id="phaseTimer">--:--</span>
+                    </div>
+                    <div class="timer-track">
+                        <div id="phaseTimerFill" class="timer-fill"></div>
                     </div>
                     <div class="overlay-row">
                         <span>🎙️ Active speaker</span>

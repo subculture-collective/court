@@ -10,16 +10,46 @@ const verdictActions = document.getElementById('verdictActions');
 const sentenceActions = document.getElementById('sentenceActions');
 const statusEl = document.getElementById('status');
 const phaseTimer = document.getElementById('phaseTimer');
+const phaseTimerFill = document.getElementById('phaseTimerFill');
 const activeSpeakerEl = document.getElementById('activeSpeaker');
 const captionLineEl = document.getElementById('captionLine');
+const connectionBanner = document.getElementById('connectionBanner');
 
 let activeSession = null;
 let source = null;
 let timerInterval = null;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_MAX_MS = 10_000;
 
 function setStatus(message, type = 'ok') {
     statusEl.textContent = message;
     statusEl.className = type === 'error' ? 'danger' : 'ok';
+}
+
+function setConnectionBanner(message) {
+    if (!message) {
+        connectionBanner.textContent = '';
+        connectionBanner.classList.add('hidden');
+        return;
+    }
+
+    connectionBanner.textContent = message;
+    connectionBanner.classList.remove('hidden');
+}
+
+function setStartLoading(loading) {
+    startBtn.disabled = loading;
+    startBtn.classList.toggle('loading', loading);
+    startBtn.textContent = loading ? 'Starting…' : 'Start Session';
+}
+
+function pulseActiveSpeaker() {
+    activeSpeakerEl.classList.remove('speaker-live');
+    void activeSpeakerEl.offsetWidth;
+    activeSpeakerEl.classList.add('speaker-live');
 }
 
 function appendTurn(turn) {
@@ -37,13 +67,17 @@ function appendTurn(turn) {
     feed.appendChild(item);
     feed.scrollTop = feed.scrollHeight;
     activeSpeakerEl.textContent = `${turn.role} · ${turn.speaker}`;
+    pulseActiveSpeaker();
     captionLineEl.textContent = turn.dialogue;
 }
 
 function renderTally(container, map) {
     container.innerHTML = '';
     const entries = Object.entries(map || {});
-    const totalVotes = entries.reduce((sum, [, count]) => sum + Number(count), 0);
+    const totalVotes = entries.reduce(
+        (sum, [, count]) => sum + Number(count),
+        0,
+    );
     if (entries.length === 0) {
         const row = document.createElement('div');
         row.className = 'vote-row';
@@ -124,6 +158,7 @@ function updateTimer(phaseStartedAt, phaseDurationMs) {
 
     if (!phaseStartedAt || !phaseDurationMs) {
         phaseTimer.textContent = '--:--';
+        phaseTimerFill.style.width = '0%';
         return;
     }
 
@@ -131,6 +166,8 @@ function updateTimer(phaseStartedAt, phaseDurationMs) {
     const tick = () => {
         const elapsed = Date.now() - started;
         const remaining = Math.max(0, phaseDurationMs - elapsed);
+        const progressRatio = Math.min(1, elapsed / phaseDurationMs);
+        phaseTimerFill.style.width = `${Math.round(progressRatio * 100)}%`;
         const minutes = Math.floor(remaining / 60000)
             .toString()
             .padStart(2, '0');
@@ -148,12 +185,51 @@ function updateTimer(phaseStartedAt, phaseDurationMs) {
     timerInterval = setInterval(tick, 250);
 }
 
-function connectStream(sessionId) {
+function scheduleReconnect(sessionId) {
+    if (reconnectTimer || !activeSession || activeSession.id !== sessionId) {
+        return;
+    }
+
+    const delayMs = Math.min(
+        RECONNECT_MAX_MS,
+        RECONNECT_BASE_MS * 2 ** reconnectAttempts,
+    );
+    reconnectAttempts += 1;
+
+    setConnectionBanner(
+        `Stream disconnected. Reconnecting in ${Math.ceil(delayMs / 1000)}s (attempt ${reconnectAttempts})…`,
+    );
+    // eslint-disable-next-line no-console
+    console.info(
+        `[sse] reconnect_attempt session=${sessionId} attempt=${reconnectAttempts} delayMs=${delayMs}`,
+    );
+
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectStream(sessionId, true);
+    }, delayMs);
+}
+
+function connectStream(sessionId, isReconnect = false) {
     if (source) {
         source.close();
+        source = null;
+    }
+
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
     }
 
     source = new EventSource(`/api/court/sessions/${sessionId}/stream`);
+
+    source.onopen = () => {
+        reconnectAttempts = 0;
+        setConnectionBanner('');
+        if (isReconnect) {
+            setStatus('Stream reconnected. Live updates resumed.');
+        }
+    };
 
     source.onmessage = event => {
         const payload = JSON.parse(event.data);
@@ -209,6 +285,17 @@ function connectStream(sessionId) {
             return;
         }
 
+        if (payload.type === 'vote_closed') {
+            const voteTotal = Object.values(payload.payload.votes || {}).reduce(
+                (sum, count) => sum + Number(count),
+                0,
+            );
+            setStatus(
+                `${payload.payload.pollType} poll closed with ${voteTotal} vote${voteTotal === 1 ? '' : 's'}.`,
+            );
+            return;
+        }
+
         if (payload.type === 'session_completed') {
             setStatus('Session complete. Verdict delivered.');
             updateTimer();
@@ -230,7 +317,12 @@ function connectStream(sessionId) {
     };
 
     source.onerror = () => {
-        setStatus('Stream disconnected. Reload if needed.', 'error');
+        setStatus('Stream disconnected. Attempting reconnect…', 'error');
+        if (source) {
+            source.close();
+            source = null;
+        }
+        scheduleReconnect(sessionId);
     };
 }
 
@@ -243,32 +335,38 @@ startBtn.onclick = async () => {
         return;
     }
 
+    setStartLoading(true);
     setStatus('Creating session...');
+    setConnectionBanner('');
 
-    const res = await fetch('/api/court/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, caseType }),
-    });
+    try {
+        const res = await fetch('/api/court/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topic, caseType }),
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    if (!res.ok) {
-        setStatus(data.error || 'Failed to start session', 'error');
-        return;
+        if (!res.ok) {
+            setStatus(data.error || 'Failed to start session', 'error');
+            return;
+        }
+
+        activeSession = data.session;
+        sessionMeta.textContent = `${activeSession.id} · ${activeSession.status}`;
+        phaseBadge.textContent = `phase: ${activeSession.phase}`;
+        feed.innerHTML = '';
+        renderTally(verdictTallies, activeSession.metadata.verdictVotes);
+        renderTally(sentenceTallies, activeSession.metadata.sentenceVotes);
+        renderActions(activeSession);
+        updateTimer(
+            activeSession.metadata.phaseStartedAt,
+            activeSession.metadata.phaseDurationMs,
+        );
+        connectStream(activeSession.id);
+        setStatus('Session started. Court is now in session.');
+    } finally {
+        setStartLoading(false);
     }
-
-    activeSession = data.session;
-    sessionMeta.textContent = `${activeSession.id} · ${activeSession.status}`;
-    phaseBadge.textContent = `phase: ${activeSession.phase}`;
-    feed.innerHTML = '';
-    renderTally(verdictTallies, activeSession.metadata.verdictVotes);
-    renderTally(sentenceTallies, activeSession.metadata.sentenceVotes);
-    renderActions(activeSession);
-    updateTimer(
-        activeSession.metadata.phaseStartedAt,
-        activeSession.metadata.phaseDurationMs,
-    );
-    connectStream(activeSession.id);
-    setStatus('Session started. Court is now in session.');
 };
