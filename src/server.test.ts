@@ -76,6 +76,17 @@ test('POST /api/court/sessions rejects short topic with explicit code', async ()
     assert.equal(json.error, 'topic must be at least 10 characters');
 });
 
+test('POST /api/court/sessions rejects unsafe topic with reason codes', async () => {
+    const { response, json } = await postJson('/api/court/sessions', {
+        topic: 'The witness called them a faggot in open court.',
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(json.code, 'TOPIC_REJECTED');
+    assert.equal(json.error, 'topic violates safety policy');
+    assert.ok(Array.isArray(json.reasons));
+});
+
 test('POST /api/court/sessions/:id/vote rejects invalid vote type', async () => {
     const sessionId = await createSessionId();
 
@@ -123,6 +134,38 @@ test('POST /api/court/sessions/:id/vote rejects vote outside active vote phase',
         String(json.error),
         /Cannot cast verdict vote during phase case_prompt/,
     );
+});
+
+test('POST /api/court/sessions/:id/vote blocks duplicate votes', async () => {
+    const sessionId = await createSessionId();
+    const phases: Array<'openings' | 'witness_exam' | 'closings' | 'verdict_vote'> = [
+        'openings',
+        'witness_exam',
+        'closings',
+        'verdict_vote',
+    ];
+
+    for (const phase of phases) {
+        const { response } = await postJson(
+            `/api/court/sessions/${sessionId}/phase`,
+            { phase },
+        );
+        assert.equal(response.status, 200);
+    }
+
+    const first = await postJson(`/api/court/sessions/${sessionId}/vote`, {
+        type: 'verdict',
+        choice: 'guilty',
+    });
+    assert.equal(first.response.status, 200);
+
+    const second = await postJson(`/api/court/sessions/${sessionId}/vote`, {
+        type: 'verdict',
+        choice: 'guilty',
+    });
+
+    assert.equal(second.response.status, 429);
+    assert.equal(second.json.code, 'VOTE_DUPLICATE');
 });
 
 test('POST /api/court/sessions/:id/phase rejects invalid phase values', async () => {

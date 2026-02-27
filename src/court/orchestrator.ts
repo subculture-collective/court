@@ -5,6 +5,7 @@ import { createTTSAdapterFromEnv, type TTSAdapter } from '../tts/adapter.js';
 import {
     createBroadcastAdapterFromEnv,
     safeBroadcastHook,
+    type BroadcastAdapter,
 } from '../broadcast/adapter.js';
 import {
     applyWitnessCap,
@@ -44,6 +45,11 @@ function bestOf(votes: Record<string, number>, fallback: string): string {
     return sorted[0]?.[0] ?? fallback;
 }
 
+const MODERATION_REDIRECT_DIALOGUE =
+    'The court will strike that from the record. Please keep testimony appropriate and on topic.';
+
+const broadcastBySession = new Map<string, BroadcastAdapter>();
+
 async function generateTurn(input: {
     store: CourtSessionStore;
     session: CourtSession;
@@ -53,6 +59,7 @@ async function generateTurn(input: {
     maxTokens?: number;
     capConfig?: WitnessCapConfig;
     dialoguePrefix?: string;
+    broadcast?: BroadcastAdapter;
 }): Promise<CourtTurn> {
     const { store, session, speaker, role, userInstruction } = input;
 
@@ -87,6 +94,8 @@ async function generateTurn(input: {
     }
 
     const moderation = moderateContent(dialogue);
+    const activeBroadcast =
+        input.broadcast ?? broadcastBySession.get(session.id);
 
     if (moderation.flagged) {
         // eslint-disable-next-line no-console
@@ -105,6 +114,23 @@ async function generateTurn(input: {
             phase: session.phase,
             changedAt: new Date().toISOString(),
         });
+
+        if (activeBroadcast) {
+            await safeBroadcastHook(
+                'moderation_alert',
+                () =>
+                    activeBroadcast.triggerModerationAlert({
+                        reason: moderation.reasons[0] ?? 'unknown',
+                        phase: session.phase,
+                        sessionId: session.id,
+                    }),
+                (type, payload) =>
+                    store.emitEvent(session.id, type, {
+                        phase: session.phase,
+                        ...payload,
+                    }),
+            );
+        }
     }
 
     const turn = await input.store.addTurn({
@@ -118,6 +144,17 @@ async function generateTurn(input: {
                 { flagged: true, reasons: moderation.reasons }
             :   undefined,
     });
+
+    if (moderation.flagged && role !== 'judge') {
+        const judgeId = session.metadata.roleAssignments.judge;
+        await store.addTurn({
+            sessionId: session.id,
+            speaker: judgeId,
+            role: 'judge',
+            phase: session.phase,
+            dialogue: MODERATION_REDIRECT_DIALOGUE,
+        });
+    }
 
     if (capResult?.capped && !moderation.flagged) {
         store.emitEvent(session.id, 'witness_response_capped', {
@@ -152,6 +189,7 @@ export async function runCourtSession(
     const session = await store.startSession(sessionId);
     const tts = options.ttsAdapter ?? createTTSAdapterFromEnv();
     const broadcast = await createBroadcastAdapterFromEnv(); // Phase 3: Initialize broadcast adapter
+    broadcastBySession.set(session.id, broadcast);
     const pause = options.sleepFn ?? sleep;
     const witnessCapConfig = resolveWitnessCapConfig();
     const recapCadenceRaw = Number.parseInt(
@@ -529,6 +567,7 @@ export async function runCourtSession(
             :   'Unknown orchestration error';
         await store.failSession(session.id, message);
     } finally {
+        broadcastBySession.delete(session.id);
         // eslint-disable-next-line no-console
         console.info(
             `[tts] session=${session.id} provider=${tts.provider} success=${ttsMetrics.success} failure=${ttsMetrics.failure}`,

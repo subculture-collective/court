@@ -6,9 +6,10 @@ import { AGENT_IDS, isValidAgent } from './agents.js';
 import { assignCourtRoles } from './court/roles.js';
 import { runCourtSession } from './court/orchestrator.js';
 import {
-    selectNextPrompt,
+    selectNextSafePrompt,
     DEFAULT_ROTATION_CONFIG,
 } from './court/prompt-bank.js';
+import { moderateContent } from './moderation/content-filter.js';
 import {
     CourtNotFoundError,
     CourtValidationError,
@@ -16,7 +17,13 @@ import {
     createCourtSessionStore,
 } from './store/session-store.js';
 import { VoteSpamGuard } from './moderation/vote-spam.js';
-import type { AgentId, CaseType, CourtPhase, GenreTag } from './types.js';
+import type {
+    AgentId,
+    CaseType,
+    CourtPhase,
+    GenreTag,
+    PromptBankEntry,
+} from './types.js';
 
 const validPhases: CourtPhase[] = [
     'case_prompt',
@@ -34,8 +41,9 @@ function sendError(
     status: number,
     code: string,
     error: string,
+    details?: Record<string, unknown>,
 ): Response {
-    return res.status(status).json({ code, error });
+    return res.status(status).json({ code, error, ...(details ?? {}) });
 }
 
 export interface CreateServerAppOptions {
@@ -68,7 +76,22 @@ export async function createServerApp(
         10,
     );
 
-    const voteSpamGuard = new VoteSpamGuard();
+    const parsePositiveInt = (value: string | undefined, fallback: number) => {
+        const parsed = Number.parseInt(value ?? '', 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+
+    const voteSpamGuard = new VoteSpamGuard({
+        maxVotesPerWindow: parsePositiveInt(
+            process.env.VOTE_SPAM_MAX_VOTES_PER_WINDOW,
+            10,
+        ),
+        windowMs: parsePositiveInt(process.env.VOTE_SPAM_WINDOW_MS, 60_000),
+        duplicateWindowMs: parsePositiveInt(
+            process.env.VOTE_SPAM_DUPLICATE_WINDOW_MS,
+            5_000,
+        ),
+    });
     const PRUNE_INTERVAL_MS = 60_000;
     const pruneTimer = setInterval(
         () => voteSpamGuard.prune(),
@@ -122,14 +145,24 @@ export async function createServerApp(
                 .filter(Boolean);
 
             // Phase 3: Select next prompt from bank using genre rotation
-            const selectedPrompt = selectNextPrompt(genreHistory);
+            let selectedPrompt: PromptBankEntry;
+            try {
+                selectedPrompt = selectNextSafePrompt(genreHistory);
+            } catch (error) {
+                return sendError(
+                    res,
+                    503,
+                    'SAFE_PROMPT_UNAVAILABLE',
+                    'No safe prompts available',
+                );
+            }
 
-            const topic =
+            const userTopic =
                 typeof req.body?.topic === 'string' ?
                     req.body.topic.trim()
-                :   selectedPrompt.casePrompt; // Use selected prompt if no topic provided
+                :   '';
 
-            if (topic.length < 10) {
+            if (userTopic && userTopic.length < 10) {
                 return sendError(
                     res,
                     400,
@@ -137,6 +170,21 @@ export async function createServerApp(
                     'topic must be at least 10 characters',
                 );
             }
+
+            if (userTopic) {
+                const moderation = moderateContent(userTopic);
+                if (moderation.flagged) {
+                    return sendError(
+                        res,
+                        400,
+                        'TOPIC_REJECTED',
+                        'topic violates safety policy',
+                        { reasons: moderation.reasons },
+                    );
+                }
+            }
+
+            const topic = userTopic || selectedPrompt.casePrompt;
 
             const caseType: CaseType =
                 req.body?.caseType === 'civil' ? 'civil'
@@ -244,18 +292,36 @@ export async function createServerApp(
         }
 
         const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-        if (!voteSpamGuard.check(req.params.id, clientIp)) {
+        const spamDecision = voteSpamGuard.check(
+            req.params.id,
+            clientIp,
+            voteType,
+            choice,
+        );
+        if (!spamDecision.allowed) {
             // eslint-disable-next-line no-console
             console.warn(
-                `[vote-spam] blocked ip=${clientIp} session=${req.params.id}`,
+                `[vote-spam] blocked ip=${clientIp} session=${req.params.id} reason=${spamDecision.reason ?? 'unknown'}`,
             );
             store.emitEvent(req.params.id, 'vote_spam_blocked', {
                 ip: clientIp,
                 voteType,
+                reason: spamDecision.reason ?? 'unknown',
+                retryAfterMs: spamDecision.retryAfterMs,
             });
+            const code =
+                spamDecision.reason === 'duplicate_vote' ?
+                    'VOTE_DUPLICATE'
+                :   'VOTE_RATE_LIMITED';
+            const errorMessage =
+                spamDecision.reason === 'duplicate_vote' ?
+                    'Duplicate vote detected. Please wait before retrying.'
+                :   'Too many votes. Please slow down.';
             return res.status(429).json({
-                code: 'VOTE_RATE_LIMITED',
-                error: 'Too many votes. Please slow down.',
+                code,
+                error: errorMessage,
+                reason: spamDecision.reason,
+                retryAfterMs: spamDecision.retryAfterMs,
             });
         }
 

@@ -8,7 +8,7 @@ This document describes the content moderation system and procedures for respond
 
 Improv Court uses a layered moderation approach:
 
-1. **Curated inputs** — case prompts and sentence options are operator-supplied; the orchestrator does not accept free-form audience input for case content.
+1. **Curated + screened inputs** — case prompts (operator or API-supplied) are screened with the moderation filter; unsafe topics are rejected and unsafe prompt-bank entries are skipped.
 2. **LLM system prompt policy** — every agent prompt includes the Clean Courtroom Policy (see below).
 3. **Automated content filter** — every generated turn is scanned before storage.
 4. **Operator override** — phase controls and session termination are available via the API at any time.
@@ -49,13 +49,15 @@ The filter (`src/moderation/content-filter.ts`) uses regular expression rules to
 1. The turn `dialogue` is replaced with:
    > `[The witness statement has been redacted by the court for decorum violations.]`
 2. A `moderation_action` SSE event is emitted to all stream subscribers.
-3. A warning is written to the server log:
+3. The objection count is incremented and a judge redirect line is inserted to steer the scene back on track.
+4. If broadcast automation is enabled, a `moderation_alert` hook is triggered for the operator overlay.
+5. A warning is written to the server log:
 
    ```
    [moderation] content flagged session=<id> speaker=<agentId> reasons=<code,code>
    ```
 
-4. Orchestration continues normally with the sanitized text.
+6. Orchestration continues normally with the sanitized text.
 
 ### Limitations
 
@@ -67,23 +69,24 @@ Operators should monitor live sessions and be prepared to intervene manually.
 
 ## Vote Spam Protection
 
-The `VoteSpamGuard` (source: `src/moderation/vote-spam.ts`) limits voting to **10 votes per IP per session per 60 seconds**.
+The `VoteSpamGuard` (source: `src/moderation/vote-spam.ts`) limits voting per IP, per session, **per vote type** and detects duplicate/replayed submissions within a configurable window.
 
 When a vote is blocked:
 
-- The API returns HTTP 429 with `{ "error": "Too many votes. Please slow down." }`.
+- The API returns HTTP 429 with `code` set to `VOTE_RATE_LIMITED` or `VOTE_DUPLICATE`.
+- The response includes `reason` and `retryAfterMs` fields for client pacing.
 - A `vote_spam_blocked` SSE event is emitted.
 - A warning is written to the server log:
 
   ```
-  [vote-spam] blocked ip=<ip> session=<id>
+  [vote-spam] blocked ip=<ip> session=<id> reason=<reason>
   ```
 
-To tighten the limit in high-traffic environments, set stricter values by modifying the `VoteSpamGuard` constructor call in `src/server.ts`:
+Tune limits via environment variables (see `.env` / `.env.example`):
 
-```ts
-const voteSpamGuard = new VoteSpamGuard({ maxVotesPerWindow: 3, windowMs: 60_000 });
-```
+- `VOTE_SPAM_MAX_VOTES_PER_WINDOW`
+- `VOTE_SPAM_WINDOW_MS`
+- `VOTE_SPAM_DUPLICATE_WINDOW_MS`
 
 ---
 

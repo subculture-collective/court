@@ -5,7 +5,13 @@
  * with deterministic rotation to avoid immediate repeats.
  */
 
-import type { GenreTag, PromptBankEntry, CaseType } from '../types.js';
+import type {
+    GenreTag,
+    PromptBankEntry,
+    CaseType,
+    ModerationReasonCode,
+} from '../types.js';
+import { moderateContent } from '../moderation/content-filter.js';
 
 // ---------------------------------------------------------------------------
 // Prompt Bank
@@ -205,22 +211,85 @@ export function selectNextPrompt(
     return selected;
 }
 
+export interface PromptSafetyResult {
+    allowed: boolean;
+    reasons: ModerationReasonCode[];
+}
+
 /**
  * Safety screen hook for prompt validation.
- * Currently a no-op placeholder that will integrate with moderation pipeline.
- *
- * Future implementation will:
- * - Check prompt against content filters
- * - Verify prompt meets clean courtroom policy
- * - Flag any prompt-specific safety concerns
- *
- * @param prompt - Prompt to validate
- * @returns True if prompt passes safety checks
+ * Checks prompts against the moderation pipeline.
+ */
+export function screenPromptForSession(
+    prompt: PromptBankEntry,
+): PromptSafetyResult {
+    const moderation = moderateContent(prompt.casePrompt);
+    return {
+        allowed: !moderation.flagged,
+        reasons: moderation.reasons,
+    };
+}
+
+/**
+ * Selects the next safe prompt from the bank, avoiding unsafe prompts.
+ * Uses deterministic rotation and falls back to any safe prompt if needed.
+ */
+export function selectNextSafePrompt(
+    genreHistory: GenreTag[] = [],
+    activeGenres?: GenreTag[],
+    minDistance: number = DEFAULT_ROTATION_CONFIG.minDistance,
+): PromptBankEntry {
+    let candidates = PROMPT_BANK.filter(p => p.active);
+
+    if (activeGenres && activeGenres.length > 0) {
+        candidates = candidates.filter(p => activeGenres.includes(p.genre));
+    }
+
+    if (candidates.length === 0) {
+        throw new Error(
+            'No active prompts available in the prompt bank. Check PROMPT_BANK and activeGenres filter.',
+        );
+    }
+
+    const safeCandidates = candidates.filter(
+        candidate => screenPromptForSession(candidate).allowed,
+    );
+
+    if (safeCandidates.length === 0) {
+        throw new Error('No safe prompts available in the prompt bank.');
+    }
+
+    const recentGenres = new Set(
+        genreHistory.slice(-minDistance).filter(Boolean),
+    );
+
+    let availablePrompts = safeCandidates.filter(
+        p => !recentGenres.has(p.genre),
+    );
+
+    if (availablePrompts.length === 0) {
+        console.warn(
+            `[prompt-bank] All safe genres recently used (history=${genreHistory.join(',')}). Allowing any safe genre.`,
+        );
+        availablePrompts = safeCandidates;
+    }
+
+    const sortedPrompts = [...availablePrompts].sort((a, b) =>
+        a.id.localeCompare(b.id),
+    );
+    const seed = stableHash(
+        `${genreHistory.join('|')}|${sortedPrompts.map(p => p.id).join('|')}`,
+    );
+    const selected = sortedPrompts[seed % sortedPrompts.length];
+
+    return selected;
+}
+
+/**
+ * Returns true if the prompt is active and passes moderation checks.
  */
 export function validatePromptForSession(prompt: PromptBankEntry): boolean {
-    // Placeholder: always pass for now
-    // TODO: Wire to moderation/content-filter.ts pipeline in Phase 4
-    return prompt.active;
+    return prompt.active && screenPromptForSession(prompt).allowed;
 }
 
 /**

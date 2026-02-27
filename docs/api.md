@@ -3,7 +3,7 @@
 Base URL: `http://localhost:${PORT}` (default `PORT=3001`)
 
 All request and response bodies are JSON unless noted.
-Error responses have the shape `{ "code": "<ERROR_CODE>", "error": "<message>" }`.
+Error responses include `{ "code": "<ERROR_CODE>", "error": "<message>" }` plus optional metadata such as `reasons`, `reason`, or `retryAfterMs`.
 
 ---
 
@@ -55,7 +55,7 @@ Creates and immediately starts a new court session.
 
 | Field             | Type                    | Required | Description                                                                             |
 | ----------------- | ----------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `topic`           | `string`                | ✅       | Case description. Minimum 10 characters.                                                |
+| `topic`           | `string`                | ✅       | Case description. Minimum 10 characters. Screened for safety.                           |
 | `caseType`        | `"criminal" \| "civil"` | ❌       | Defaults to `"criminal"`.                                                               |
 | `participants`    | `AgentId[]`             | ❌       | List of agent IDs to include. Defaults to all six agents. Must be at least 4 valid IDs. |
 | `sentenceOptions` | `string[]`              | ❌       | Custom sentence choices for the sentencing poll. Defaults to five built-in options.     |
@@ -67,7 +67,9 @@ Creates and immediately starts a new court session.
 Common error codes:
 
 - `INVALID_TOPIC`
+- `TOPIC_REJECTED`
 - `INVALID_PARTICIPANTS`
+- `SAFE_PROMPT_UNAVAILABLE`
 - `SESSION_CREATE_FAILED`
 
 **Example**
@@ -85,7 +87,7 @@ POST /api/court/sessions
 ### `POST /api/court/sessions/:id/vote`
 
 Casts a jury vote. Enforces the active phase (verdict votes only accepted during `verdict_vote`; sentence votes only during `sentence_vote`).
-Rate-limited to 10 votes per IP per session per 60 seconds.
+Rate-limited per IP, per session, per vote type; duplicate votes are blocked within a configurable window.
 
 **Request body**
 
@@ -119,12 +121,13 @@ Common error codes:
 
 **Response `404`** — session not found
 
-**Response `429`** — too many votes from this IP
+**Response `429`** — rate limited or duplicate vote (includes `reason` and `retryAfterMs`)
 
 Additional error codes:
 
 - `SESSION_NOT_FOUND` (`404`)
 - `VOTE_RATE_LIMITED` (`429`)
+- `VOTE_DUPLICATE` (`429`)
 - `VOTE_FAILED` (`500`)
 
 ---
@@ -294,6 +297,6 @@ Every SSE payload is a `CourtEvent`:
 | `judge_recap_emitted`     | Judge recap emitted during witness exam                             | `turnId`, `phase`, `cycleNumber`                                            |
 | `analytics_event`         | Poll open/close lifecycle events                                    | `event`, `phase`                                                            |
 | `moderation_action`       | Turn content was flagged and redacted                               | `speaker`, `reasons`                                                        |
-| `vote_spam_blocked`       | Vote rejected due to rate limiting                                  | `ip`, `voteType`                                                            |
+| `vote_spam_blocked`       | Vote rejected due to rate limiting or duplicate detection           | `ip`, `voteType`, `reason`, `retryAfterMs`                                  |
 | `session_completed`       | Session reached `final_ruling` successfully                         | `sessionId`, `finalRuling`                                                  |
 | `session_failed`          | Orchestration threw an unrecoverable error                          | `sessionId`, `reason`                                                       |
