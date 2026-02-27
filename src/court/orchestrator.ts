@@ -192,7 +192,7 @@ async function generateTurn(input: {
         phase: session.phase,
         promptTokens:
             estimateTokens(systemPrompt) + estimateTokens(userInstruction),
-        completionTokens: estimateTokens(dialogue),
+        completionTokens: estimateTokens(moderation.sanitized),
     });
 
     if (moderation.flagged && role !== 'judge') {
