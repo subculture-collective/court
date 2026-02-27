@@ -64,7 +64,7 @@ const RECONNECT_MAX_MS = 10_000;
 const catchupState = {
     visible: true,
     toggles: 0,
-    shown: 0,
+    shown: 1,
     hidden: 0,
 };
 
@@ -96,27 +96,23 @@ function pulseActiveSpeaker() {
     activeSpeakerEl.classList.add('speaker-live');
 }
 
+const JURY_STEP_LABELS = Object.freeze({
+    case_prompt: 'Jury pending — court intro in progress',
+    openings: 'Jury listening — opening statements',
+    witness_exam: 'Jury observing witness examination',
+    evidence_reveal: 'Jury reviewing evidence reveal',
+    closings: 'Jury preparing for verdict vote',
+    verdict_vote: 'Jury voting — verdict poll is live',
+    sentence_vote: 'Jury voting — sentence poll is live',
+    final_ruling: 'Jury complete — ruling delivered',
+});
+
 function juryStepLabel(phase) {
-    switch (phase) {
-        case 'case_prompt':
-            return 'Jury pending — court intro in progress';
-        case 'openings':
-            return 'Jury listening — opening statements';
-        case 'witness_exam':
-            return 'Jury observing witness examination';
-        case 'evidence_reveal':
-            return 'Jury reviewing evidence reveal';
-        case 'closings':
-            return 'Jury preparing for verdict vote';
-        case 'verdict_vote':
-            return 'Jury voting — verdict poll is live';
-        case 'sentence_vote':
-            return 'Jury voting — sentence poll is live';
-        case 'final_ruling':
-            return 'Jury complete — ruling delivered';
-        default:
-            return 'Jury status unavailable';
+    const label = JURY_STEP_LABELS[phase];
+    if (label === undefined) {
+        throw new Error(`Unknown jury phase: ${String(phase)}`);
     }
+    return label;
 }
 
 function summarizeCaseSoFar(turns) {
@@ -127,9 +123,10 @@ function summarizeCaseSoFar(turns) {
 
     const toCompact = text => text.replace(/\s+/g, ' ').trim();
     const clip = text => {
+        const maxChars = 220;
         const compact = toCompact(text);
-        if (compact.length <= 220) return compact;
-        return `${compact.slice(0, 219).trimEnd()}…`;
+        if (compact.length <= maxChars) return compact;
+        return `${compact.slice(0, maxChars - 1).trimEnd()}…`;
     };
 
     if (latestRecap?.dialogue) {
@@ -145,10 +142,12 @@ function summarizeCaseSoFar(turns) {
 }
 
 function updateCatchupPanel(session) {
-    const phase = session?.phase ?? 'idle';
+    const phase = session?.phase;
     const turns = session?.turns ?? [];
     catchupSummaryEl.textContent = summarizeCaseSoFar(turns);
-    catchupMetaEl.textContent = `phase: ${phase} · ${juryStepLabel(phase)}`;
+    catchupMetaEl.textContent = phase
+        ? `phase: ${phase} · ${juryStepLabel(phase)}`
+        : 'phase: idle · Jury pending';
 }
 
 function recordCatchupToggleTelemetry(visible, reason) {

@@ -7,11 +7,13 @@ export interface CatchupView {
 }
 
 function normalize(text: string, maxChars: number): string {
+    // Ensure we always have room for at least one character plus an ellipsis
+    const effectiveMax = Math.max(2, maxChars);
     const compact = text.replace(/\s+/g, ' ').trim();
-    if (compact.length <= maxChars) {
+    if (compact.length <= effectiveMax) {
         return compact;
     }
-    return `${compact.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+    return `${compact.slice(0, effectiveMax - 1).trimEnd()}…`;
 }
 
 export function buildCaseSoFarSummary(
