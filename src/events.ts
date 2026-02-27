@@ -90,6 +90,8 @@ export interface ModerationActionPayload {
 export interface VoteSpamBlockedPayload {
     ip: string;
     voteType: 'verdict' | 'sentence';
+    reason?: string;
+    retryAfterMs?: number;
 }
 
 export interface SessionCompletedPayload {

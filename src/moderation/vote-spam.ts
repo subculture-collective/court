@@ -1,50 +1,94 @@
+export type VoteSpamRejectionReason = 'rate_limited' | 'duplicate_vote';
+
+export interface VoteSpamDecision {
+    allowed: boolean;
+    reason?: VoteSpamRejectionReason;
+    retryAfterMs?: number;
+}
+
 export interface VoteSpamConfig {
     /** Max votes per IP per session within the time window. */
     maxVotesPerWindow: number;
     /** Time window in milliseconds. */
     windowMs: number;
+    /** Duplicate/replay window for identical votes. */
+    duplicateWindowMs: number;
 }
 
 const DEFAULT_CONFIG: VoteSpamConfig = {
     maxVotesPerWindow: 10,
     windowMs: 60_000,
+    duplicateWindowMs: 5_000,
 };
+
+type VoteType = 'verdict' | 'sentence';
 
 interface VoteRecord {
     timestamps: number[];
+    recentChoices: Map<string, number>;
 }
 
 export class VoteSpamGuard {
     private readonly config: VoteSpamConfig;
-    /** Map key = `${sessionId}:${ip}` */
+    /** Map key = `${sessionId}:${ip}:${voteType}` */
     private readonly records = new Map<string, VoteRecord>();
 
     constructor(config?: Partial<VoteSpamConfig>) {
         this.config = { ...DEFAULT_CONFIG, ...config };
     }
 
-    /**
-     * Returns `true` if the vote should be allowed, `false` if it is spam.
-     */
-    check(sessionId: string, ip: string): boolean {
-        const key = `${sessionId}:${ip}`;
+    check(
+        sessionId: string,
+        ip: string,
+        voteType: VoteType,
+        choice: string,
+    ): VoteSpamDecision {
+        const key = `${sessionId}:${ip}:${voteType}`;
         const now = Date.now();
         const cutoff = now - this.config.windowMs;
+        const duplicateCutoff = now - this.config.duplicateWindowMs;
 
         let record = this.records.get(key);
         if (!record) {
-            record = { timestamps: [] };
+            record = { timestamps: [], recentChoices: new Map() };
             this.records.set(key, record);
         }
 
         record.timestamps = record.timestamps.filter(t => t > cutoff);
+        for (const [value, timestamp] of record.recentChoices) {
+            if (timestamp <= duplicateCutoff) {
+                record.recentChoices.delete(value);
+            }
+        }
+
+        const lastChoiceAt = record.recentChoices.get(choice);
+        if (lastChoiceAt !== undefined && lastChoiceAt > duplicateCutoff) {
+            return {
+                allowed: false,
+                reason: 'duplicate_vote',
+                retryAfterMs: Math.max(
+                    0,
+                    lastChoiceAt + this.config.duplicateWindowMs - now,
+                ),
+            };
+        }
 
         if (record.timestamps.length >= this.config.maxVotesPerWindow) {
-            return false;
+            const oldest = record.timestamps[0] ?? now;
+            return {
+                allowed: false,
+                reason: 'rate_limited',
+                retryAfterMs: Math.max(
+                    0,
+                    oldest + this.config.windowMs - now,
+                ),
+            };
         }
 
         record.timestamps.push(now);
-        return true;
+        record.recentChoices.set(choice, now);
+
+        return { allowed: true };
     }
 
     /**
@@ -53,9 +97,18 @@ export class VoteSpamGuard {
     prune(): void {
         const now = Date.now();
         const cutoff = now - this.config.windowMs;
+        const duplicateCutoff = now - this.config.duplicateWindowMs;
         for (const [key, record] of this.records) {
             record.timestamps = record.timestamps.filter(t => t > cutoff);
-            if (record.timestamps.length === 0) {
+            for (const [value, timestamp] of record.recentChoices) {
+                if (timestamp <= duplicateCutoff) {
+                    record.recentChoices.delete(value);
+                }
+            }
+            if (
+                record.timestamps.length === 0 &&
+                record.recentChoices.size === 0
+            ) {
                 this.records.delete(key);
             }
         }
