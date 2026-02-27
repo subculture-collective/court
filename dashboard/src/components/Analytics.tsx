@@ -29,6 +29,23 @@ export function Analytics({ events }: AnalyticsProps) {
         const votes = events.filter(e => e.type === 'vote_updated');
         const statements = events.filter(e => e.type === 'turn');
         const recaps = events.filter(e => e.type === 'judge_recap_emitted');
+        const tokenBudgetApplied = events.filter(
+            e => e.type === 'token_budget_applied',
+        );
+        const tokenEstimates = events.filter(
+            e => e.type === 'session_token_estimate',
+        );
+
+        const latestEstimate = tokenEstimates[tokenEstimates.length - 1];
+        const latestEstimatedTokens =
+            typeof latestEstimate?.payload.cumulativeEstimatedTokens ===
+            'number' ?
+                latestEstimate.payload.cumulativeEstimatedTokens
+            :   0;
+        const latestEstimatedCostUsd =
+            typeof latestEstimate?.payload.estimatedCostUsd === 'number' ?
+                latestEstimate.payload.estimatedCostUsd
+            :   0;
 
         return {
             total: events.length,
@@ -37,13 +54,16 @@ export function Analytics({ events }: AnalyticsProps) {
             votes: votes.length,
             statements: statements.length,
             recaps: recaps.length,
+            tokenBudgetApplied: tokenBudgetApplied.length,
+            latestEstimatedTokens,
+            latestEstimatedCostUsd,
         };
     }, [events]);
 
     return (
         <div className='space-y-6'>
             {/* Summary Stats */}
-            <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
+            <div className='grid grid-cols-1 md:grid-cols-6 gap-4'>
                 <div className='bg-gray-800 rounded-lg p-6'>
                     <div className='text-sm text-gray-400'>Total Events</div>
                     <div className='text-3xl font-bold text-primary-400'>
@@ -66,6 +86,21 @@ export function Analytics({ events }: AnalyticsProps) {
                     <div className='text-sm text-gray-400'>Recaps</div>
                     <div className='text-3xl font-bold text-purple-400'>
                         {stats.recaps}
+                    </div>
+                </div>
+                <div className='bg-gray-800 rounded-lg p-6'>
+                    <div className='text-sm text-gray-400'>Token Caps</div>
+                    <div className='text-3xl font-bold text-amber-400'>
+                        {stats.tokenBudgetApplied}
+                    </div>
+                </div>
+                <div className='bg-gray-800 rounded-lg p-6'>
+                    <div className='text-sm text-gray-400'>Est. Cost (USD)</div>
+                    <div className='text-3xl font-bold text-emerald-400'>
+                        ${stats.latestEstimatedCostUsd.toFixed(4)}
+                    </div>
+                    <div className='text-xs text-gray-500 mt-1'>
+                        ~{stats.latestEstimatedTokens} tokens
                     </div>
                 </div>
             </div>

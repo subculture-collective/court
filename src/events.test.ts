@@ -121,6 +121,40 @@ test('assertEventPayload: judge_recap_emitted valid', () => {
     );
 });
 
+test('assertEventPayload: token_budget_applied valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('token_budget_applied', {
+                turnId: 'turn-3',
+                speaker: 'chora',
+                role: 'judge',
+                phase: 'openings',
+                requestedMaxTokens: 260,
+                appliedMaxTokens: 180,
+                roleMaxTokens: 180,
+                source: 'env_role_cap',
+            }),
+        ),
+    );
+});
+
+test('assertEventPayload: session_token_estimate valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('session_token_estimate', {
+                turnId: 'turn-4',
+                role: 'judge',
+                phase: 'openings',
+                estimatedPromptTokens: 120,
+                estimatedCompletionTokens: 75,
+                cumulativeEstimatedTokens: 195,
+                costPer1kTokensUsd: 0.002,
+                estimatedCostUsd: 0.00039,
+            }),
+        ),
+    );
+});
+
 test('assertEventPayload: analytics_event poll_started valid', () => {
     assert.doesNotThrow(() =>
         assertEventPayload(
@@ -302,6 +336,42 @@ test('assertEventPayload: judge_recap_emitted missing cycleNumber', () => {
                 makeEvent('judge_recap_emitted', {
                     turnId: 'turn-2',
                     phase: 'witness_exam',
+                }),
+            ),
+        TypeError,
+    );
+});
+
+test('assertEventPayload: token_budget_applied missing roleMaxTokens', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('token_budget_applied', {
+                    turnId: 'turn-3',
+                    speaker: 'chora',
+                    role: 'judge',
+                    phase: 'openings',
+                    requestedMaxTokens: 260,
+                    appliedMaxTokens: 180,
+                    source: 'env_role_cap',
+                }),
+            ),
+        TypeError,
+    );
+});
+
+test('assertEventPayload: session_token_estimate missing estimatedCostUsd', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('session_token_estimate', {
+                    turnId: 'turn-4',
+                    role: 'judge',
+                    phase: 'openings',
+                    estimatedPromptTokens: 120,
+                    estimatedCompletionTokens: 75,
+                    cumulativeEstimatedTokens: 195,
+                    costPer1kTokensUsd: 0.002,
                 }),
             ),
         TypeError,
