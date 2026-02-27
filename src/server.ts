@@ -366,7 +366,18 @@ export async function createServerApp(
 
     // Catch-all for operator dashboard (SPA routing)
     app.get('/operator/*', (_req, res) => {
-        res.sendFile(path.join(dashboardDir, 'index.html'));
+        const indexPath = path.join(dashboardDir, 'index.html');
+        res.sendFile(indexPath, err => {
+            if (err) {
+                if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                    res.status(404).send(
+                        'Operator dashboard not found. Run `npm run build:dashboard` first.',
+                    );
+                } else {
+                    res.status(500).send('Failed to load operator dashboard.');
+                }
+            }
+        });
     });
 
     // Catch-all for main app (SPA routing)

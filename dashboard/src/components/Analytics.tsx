@@ -16,18 +16,19 @@ export function Analytics({ events }: AnalyticsProps) {
         );
 
         const byPhase = events
-            .filter(e => e.phase)
+            .filter(e => e.type === 'phase_changed')
             .reduce(
                 (acc, event) => {
-                    acc[event.phase!] = (acc[event.phase!] || 0) + 1;
+                    const phase = event.payload.phase as string;
+                    if (phase) acc[phase] = (acc[phase] || 0) + 1;
                     return acc;
                 },
                 {} as Record<string, number>,
             );
 
-        const votes = events.filter(e => e.type === 'VOTE_CAST');
-        const statements = events.filter(e => e.type === 'STATEMENT_COMPLETE');
-        const recaps = events.filter(e => e.type === 'RECAP_GENERATED');
+        const votes = events.filter(e => e.type === 'vote_updated');
+        const statements = events.filter(e => e.type === 'turn');
+        const recaps = events.filter(e => e.type === 'judge_recap_emitted');
 
         return {
             total: events.length,
@@ -157,18 +158,24 @@ export function Analytics({ events }: AnalyticsProps) {
                                 >
                                     <div className='text-xs text-gray-500 font-mono w-20'>
                                         {new Date(
-                                            event.timestamp,
+                                            event.at,
                                         ).toLocaleTimeString()}
                                     </div>
                                     <div className='flex-1'>
                                         <span className='text-sm font-medium text-primary-300'>
                                             {event.type}
                                         </span>
-                                        {event.phase && (
-                                            <span className='ml-2 text-xs text-gray-400'>
-                                                ({event.phase})
-                                            </span>
-                                        )}
+                                        {event.type === 'phase_changed' &&
+                                            event.payload.phase && (
+                                                <span className='ml-2 text-xs text-gray-400'>
+                                                    (
+                                                    {
+                                                        event.payload
+                                                            .phase as string
+                                                    }
+                                                    )
+                                                </span>
+                                            )}
                                     </div>
                                 </div>
                             ))

@@ -80,17 +80,18 @@ export class Logger {
     // Convenience method to create a child logger with base context
     child(baseContext: LogContext): Logger {
         const parent = this;
-        const childLogger = Object.create(Logger.prototype);
+        const childLogger = Object.create(Logger.prototype) as Logger;
 
         childLogger.minLevel = this.minLevel;
-        childLogger.shouldLog = this.shouldLog.bind(this);
 
-        // Override write to merge contexts
+        // Override write to check child's own minLevel and merge contexts.
+        // This ensures setLevel() on the child has the expected effect.
         childLogger.write = (
             level: LogLevel,
             message: string,
             context?: LogContext,
         ) => {
+            if (LOG_LEVELS[level] < LOG_LEVELS[childLogger.minLevel]) return;
             const mergedContext = { ...baseContext, ...context };
             parent.write(level, message, mergedContext);
         };
@@ -104,7 +105,11 @@ export class Logger {
 }
 
 // Create singleton logger instance
-const logLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
+const rawLogLevel = process.env.LOG_LEVEL;
+const logLevel: LogLevel =
+    rawLogLevel && rawLogLevel in LOG_LEVELS ?
+        (rawLogLevel as LogLevel)
+    :   'info';
 export const logger = new Logger(logLevel);
 
 // Export convenience function for creating child loggers

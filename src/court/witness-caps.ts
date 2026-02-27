@@ -26,12 +26,24 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseNonNegativeInt(
+    value: string | undefined,
+    fallback: number,
+): number {
+    if (!value) return fallback;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 export function resolveWitnessCapConfig(
     env: NodeJS.ProcessEnv = process.env,
 ): WitnessCapConfig {
     return {
-        maxTokens: parsePositiveInt(env.WITNESS_MAX_TOKENS, DEFAULTS.maxTokens),
-        maxSeconds: parsePositiveInt(
+        maxTokens: parseNonNegativeInt(
+            env.WITNESS_MAX_TOKENS,
+            DEFAULTS.maxTokens,
+        ),
+        maxSeconds: parseNonNegativeInt(
             env.WITNESS_MAX_SECONDS,
             DEFAULTS.maxSeconds,
         ),
@@ -57,7 +69,7 @@ export function truncateToTokens(text: string, maxTokens: number): string {
     return parts.slice(0, maxTokens).join(' ');
 }
 
-function effectiveTokenLimit(config: WitnessCapConfig): {
+export function effectiveTokenLimit(config: WitnessCapConfig): {
     limit: number | undefined;
     reason?: 'tokens' | 'seconds';
 } {

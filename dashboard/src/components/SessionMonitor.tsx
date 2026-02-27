@@ -15,10 +15,40 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
     useEffect(() => {
         if (!sessionId) return;
 
-        fetch('/api/session')
-            .then(res => res.json())
+        fetch(`/api/court/sessions/${sessionId}`)
+            .then(res => {
+                if (!res.ok) throw new Error(`Status ${res.status}`);
+                return res.json();
+            })
             .then(data => {
-                setSnapshot(data);
+                const s = data.session;
+                if (!s) return;
+                setSnapshot({
+                    sessionId: s.id,
+                    phase: s.phase,
+                    transcript: (s.turns ?? []).map((t: any) => ({
+                        speaker: t.speaker,
+                        content: t.dialogue,
+                        timestamp: t.createdAt,
+                        isRecap: s.metadata?.recapTurnIds?.includes(t.id),
+                    })),
+                    votes: {
+                        verdict: {
+                            guilty:
+                                s.metadata?.verdictVotes?.guilty ?? 0,
+                            innocent:
+                                s.metadata?.verdictVotes?.not_guilty ??
+                                s.metadata?.verdictVotes?.not_liable ??
+                                0,
+                            total: Object.values(
+                                s.metadata?.verdictVotes ?? {},
+                            ).reduce((a: number, b) => a + (b as number), 0),
+                        },
+                    },
+                    recapCount: (s.metadata?.recapTurnIds ?? []).length,
+                    witnessCaps: { witness1: 0, witness2: 0 },
+                    config: { maxWitnessStatements: 3, recapInterval: 2 },
+                });
                 setLoading(false);
             })
             .catch(err => {
@@ -239,26 +269,31 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                                     </span>
                                     <span className='text-xs text-gray-400'>
                                         {new Date(
-                                            event.timestamp,
+                                            event.at,
                                         ).toLocaleTimeString()}
                                     </span>
                                 </div>
-                                {event.speaker && (
-                                    <div className='text-gray-300'>
-                                        <span className='text-gray-400'>
-                                            Speaker:
-                                        </span>{' '}
-                                        {event.speaker}
-                                    </div>
-                                )}
-                                {event.phase && (
-                                    <div className='text-gray-300'>
-                                        <span className='text-gray-400'>
-                                            Phase:
-                                        </span>{' '}
-                                        {event.phase}
-                                    </div>
-                                )}
+                                {event.type === 'turn' &&
+                                    (event.payload.turn as any)?.speaker && (
+                                        <div className='text-gray-300'>
+                                            <span className='text-gray-400'>
+                                                Speaker:
+                                            </span>{' '}
+                                            {
+                                                (event.payload.turn as any)
+                                                    .speaker
+                                            }
+                                        </div>
+                                    )}
+                                {event.type === 'phase_changed' &&
+                                    event.payload.phase && (
+                                        <div className='text-gray-300'>
+                                            <span className='text-gray-400'>
+                                                Phase:
+                                            </span>{' '}
+                                            {event.payload.phase as string}
+                                        </div>
+                                    )}
                             </div>
                         ))
                     }
