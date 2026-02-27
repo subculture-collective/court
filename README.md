@@ -1,5 +1,7 @@
 # Improv Court POC (standalone)
 
+[![CI](https://github.com/subculture-collective/court/actions/workflows/ci.yml/badge.svg)](https://github.com/subculture-collective/court/actions/workflows/ci.yml)
+
 This is a **standalone root-level implementation** of the Improv Court proof of concept.
 It does **not** depend on `subcult-corp` at runtime.
 
@@ -99,6 +101,16 @@ If you need host access to Postgres, add a `ports` mapping to the `db` service i
 - `POST /api/court/sessions/:id/vote`
 - `POST /api/court/sessions/:id/phase`
 - `GET /api/court/sessions/:id/stream` (SSE)
+
+## Local CI parity
+
+Run the same checks as CI locally before pushing:
+
+```sh
+npm run lint   # type-check (tsc --noEmit)
+npm run build  # compile TypeScript to dist/
+npm test       # run all tests
+```
 
 ## Notes
 
