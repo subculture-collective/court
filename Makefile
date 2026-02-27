@@ -10,7 +10,7 @@ SHELL := /usr/bin/env bash
 NPM ?= npm
 DOCKER_COMPOSE ?= docker compose
 
-.PHONY: help install dev lint build test test-spec ci start migrate migrate-dist docker-up docker-down docker-restart clean status
+.PHONY: help install dev dev-dashboard lint build build-dashboard test test-spec ci start migrate migrate-dist docker-up docker-down docker-restart clean status
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"; printf "\nImprov Court Make targets:\n\n"} /^[a-zA-Z0-9_.-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 } END { printf "\n" }' $(MAKEFILE_LIST)
@@ -21,11 +21,17 @@ install: ## Install Node dependencies
 dev: ## Start local dev server with watch mode
 	$(NPM) run dev
 
+dev-dashboard: ## Start operator dashboard dev server with Vite
+	$(NPM) run dev:dashboard
+
 lint: ## Run TypeScript type-check (no emit)
 	$(NPM) run lint
 
-build: ## Compile TypeScript to dist/
+build: ## Compile TypeScript to dist/ and build dashboard
 	$(NPM) run build
+
+build-dashboard: ## Build operator dashboard for production
+	$(NPM) run build:dashboard
 
 test: ## Run test suite
 	$(NPM) test

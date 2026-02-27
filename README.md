@@ -34,6 +34,17 @@ It does **not** depend on `subcult-corp` at runtime.
     - Overlay shell with phase timer, active speaker, and live captions
     - Verdict/sentence poll bars with live percentages and phase-gated voting
     - SSE analytics events for poll start/close and vote completion
+- **Operator Dashboard** (`/operator`)
+    - Real-time session monitoring with live event feed
+    - Vote tallies and witness cap tracking
+    - Moderation queue for content review
+    - Manual controls for session management
+    - Analytics dashboard with event timelines
+- **Structured Logging Service**
+    - JSON-formatted logs with session/phase/event correlation
+    - Configurable log levels (debug/info/warn/error)
+    - Child loggers with inherited context
+    - Production-ready logging architecture
 
 ## Environment
 
@@ -43,11 +54,18 @@ Key variables:
 
 - `OPENROUTER_API_KEY` (optional for local mock mode; required for real LLM calls)
 - `LLM_MODEL`
+- `LLM_MOCK` (set to `true` to force deterministic mock responses)
 - `PORT`
 - `DATABASE_URL` (Postgres connection string for durable persistence)
 - `TTS_PROVIDER` (`noop` or `mock`; defaults to `noop`)
 - `VERDICT_VOTE_WINDOW_MS`
 - `SENTENCE_VOTE_WINDOW_MS`
+- `WITNESS_MAX_TOKENS`
+- `WITNESS_MAX_SECONDS`
+- `WITNESS_TOKENS_PER_SECOND`
+- `WITNESS_TRUNCATION_MARKER`
+- `JUDGE_RECAP_CADENCE`
+- `LOG_LEVEL` (debug, info, warn, error; defaults to `info`)
 
 If `OPENROUTER_API_KEY` is empty, the app falls back to deterministic mock dialogue.
 
@@ -55,6 +73,8 @@ If `DATABASE_URL` is set, the app uses Postgres-backed persistence and runs migr
 If `DATABASE_URL` is missing, the app falls back to in-memory storage (non-durable).
 
 `TTS_PROVIDER=noop` keeps TTS silent (default). `TTS_PROVIDER=mock` records adapter calls for local/testing workflows without requiring an external speech provider.
+
+Witness response caps are controlled by `WITNESS_MAX_TOKENS` and `WITNESS_MAX_SECONDS`. The recap cadence uses `JUDGE_RECAP_CADENCE` (every N witness cycles). `WITNESS_TRUNCATION_MARKER` customizes the appended cutoff text.
 
 ## Run
 
@@ -64,8 +84,12 @@ If `DATABASE_URL` is missing, the app falls back to in-memory storage (non-durab
     - `npm run migrate`
 3. Start dev server:
     - `npm run dev`
-4. Open:
-    - `http://localhost:3001`
+4. Build operator dashboard:
+    - `npm run build:dashboard` (production build)
+    - `npm run dev:dashboard` (development mode on port 3001)
+5. Open:
+    - Main app: `http://localhost:3000`
+    - Operator dashboard: `http://localhost:3000/operator`
 
 ## Run with Docker (API + Postgres)
 
@@ -90,10 +114,12 @@ The API container runs migrations on startup (`npm run migrate:dist`) before sta
 
 Endpoints when running with compose:
 
-- API: `http://localhost:${API_HOST_PORT:-3001}`
+- Main app: `http://localhost:${API_HOST_PORT:-3000}`
+- Operator dashboard: `http://localhost:${API_HOST_PORT:-3000}/operator`
+- API: `http://localhost:${API_HOST_PORT:-3000}/api`
 - Postgres: internal-only by default (`db:5432` inside compose network)
 
-If port `3001` is already in use on your machine, set `API_HOST_PORT` in `.env` (for example `API_HOST_PORT=3002`) and restart compose.
+If port `3000` is already in use on your machine, set `API_HOST_PORT` in `.env` (for example `API_HOST_PORT=3002`) and restart compose.
 
 If you need host access to Postgres, add a `ports` mapping to the `db` service in `docker-compose.yml` (for example `"5433:5432"` to avoid conflicts with local Postgres).
 

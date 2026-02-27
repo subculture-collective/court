@@ -53,6 +53,7 @@ export async function createServerApp(
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const publicDir = path.resolve(__dirname, '../public');
+    const dashboardDir = path.resolve(__dirname, '../dist/dashboard');
 
     const verdictWindowMs = Number.parseInt(
         process.env.VERDICT_VOTE_WINDOW_MS ?? '20000',
@@ -72,6 +73,11 @@ export async function createServerApp(
     pruneTimer.unref();
 
     app.use(express.json());
+
+    // Serve operator dashboard
+    app.use('/operator', express.static(dashboardDir));
+
+    // Serve main public app
     app.use(express.static(publicDir));
 
     app.get('/api/health', (_req, res) => {
@@ -309,6 +315,7 @@ export async function createServerApp(
                     turns: session.turns,
                     verdictVotes: session.metadata.verdictVotes,
                     sentenceVotes: session.metadata.sentenceVotes,
+                    recapTurnIds: session.metadata.recapTurnIds ?? [],
                 },
             });
 
@@ -324,6 +331,23 @@ export async function createServerApp(
         },
     );
 
+    // Catch-all for operator dashboard (SPA routing)
+    app.get('/operator/*', (_req, res) => {
+        const indexPath = path.join(dashboardDir, 'index.html');
+        res.sendFile(indexPath, err => {
+            if (err) {
+                if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                    res.status(404).send(
+                        'Operator dashboard not found. Run `npm run build:dashboard` first.',
+                    );
+                } else {
+                    res.status(500).send('Failed to load operator dashboard.');
+                }
+            }
+        });
+    });
+
+    // Catch-all for main app (SPA routing)
     app.get('*', (_req, res) => {
         res.sendFile(path.join(publicDir, 'index.html'));
     });
@@ -347,10 +371,12 @@ export async function createServerApp(
 export async function bootstrap(): Promise<void> {
     const { app } = await createServerApp();
 
-    const port = Number.parseInt(process.env.PORT ?? '3001', 10);
+    const port = Number.parseInt(process.env.PORT ?? '3000', 10);
     app.listen(port, () => {
         // eslint-disable-next-line no-console
         console.log(`Improv Court POC running on http://localhost:${port}`);
+        // eslint-disable-next-line no-console
+        console.log(`Operator Dashboard: http://localhost:${port}/operator`);
     });
 }
 

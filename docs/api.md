@@ -235,6 +235,7 @@ data: {"type":"turn","payload":{…}}\n\n
       votes: Record<string, number>;
     };
   };
+  recapTurnIds?: string[];
   finalRuling?: {
     verdict: string;
     sentence: string;
@@ -280,17 +281,19 @@ Every SSE payload is a `CourtEvent`:
 
 ### Event Types
 
-| Type                | When emitted                                                        | Key payload fields                                    |
-| ------------------- | ------------------------------------------------------------------- | ----------------------------------------------------- |
-| `snapshot`          | Immediately on SSE connect                                          | `session`, `turns`, `verdictVotes`, `sentenceVotes`   |
-| `session_created`   | Session record inserted                                             | `sessionId`                                           |
-| `session_started`   | Orchestration begins                                                | `sessionId`                                           |
-| `phase_changed`     | Phase advances                                                      | `phase`, `durationMs`                                 |
-| `turn`              | A new dialogue turn is stored                                       | `turn: CourtTurn`                                     |
-| `vote_updated`      | A vote is successfully cast                                         | `voteType`, `choice`, `verdictVotes`, `sentenceVotes` |
-| `vote_closed`       | Transitioned away from a vote phase; includes frozen tally snapshot | `pollType`, `closedAt`, `votes`, `nextPhase`          |
-| `analytics_event`   | Poll open/close lifecycle events                                    | `event`, `phase`                                      |
-| `moderation_action` | Turn content was flagged and redacted                               | `speaker`, `reasons`                                  |
-| `vote_spam_blocked` | Vote rejected due to rate limiting                                  | `ip`, `voteType`                                      |
-| `session_completed` | Session reached `final_ruling` successfully                         | `sessionId`, `finalRuling`                            |
-| `session_failed`    | Orchestration threw an unrecoverable error                          | `sessionId`, `reason`                                 |
+| Type                      | When emitted                                                        | Key payload fields                                                          |
+| ------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `snapshot`                | Immediately on SSE connect                                          | `session`, `turns`, `verdictVotes`, `sentenceVotes`, `recapTurnIds`         |
+| `session_created`         | Session record inserted                                             | `sessionId`                                                                 |
+| `session_started`         | Orchestration begins                                                | `sessionId`                                                                 |
+| `phase_changed`           | Phase advances                                                      | `phase`, `durationMs`                                                       |
+| `turn`                    | A new dialogue turn is stored                                       | `turn: CourtTurn`                                                           |
+| `vote_updated`            | A vote is successfully cast                                         | `voteType`, `choice`, `verdictVotes`, `sentenceVotes`                       |
+| `vote_closed`             | Transitioned away from a vote phase; includes frozen tally snapshot | `pollType`, `closedAt`, `votes`, `nextPhase`                                |
+| `witness_response_capped` | Witness response was truncated due to caps                          | `turnId`, `speaker`, `phase`, `originalLength`, `truncatedLength`, `reason` |
+| `judge_recap_emitted`     | Judge recap emitted during witness exam                             | `turnId`, `phase`, `cycleNumber`                                            |
+| `analytics_event`         | Poll open/close lifecycle events                                    | `event`, `phase`                                                            |
+| `moderation_action`       | Turn content was flagged and redacted                               | `speaker`, `reasons`                                                        |
+| `vote_spam_blocked`       | Vote rejected due to rate limiting                                  | `ip`, `voteType`                                                            |
+| `session_completed`       | Session reached `final_ruling` successfully                         | `sessionId`, `finalRuling`                                                  |
+| `session_failed`          | Orchestration threw an unrecoverable error                          | `sessionId`, `reason`                                                       |

@@ -198,6 +198,50 @@
                 color: var(--muted);
                 font-size: 12px;
                 margin-bottom: 6px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                align-items: center;
+            }
+
+            .turn .meta .turn-number {
+                color: var(--muted);
+            }
+
+            .turn .meta .role-badge {
+                background: #2b2f41;
+                color: #d9e6ff;
+                border-radius: 999px;
+                padding: 2px 8px;
+                font-size: 11px;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+            }
+
+            .turn .meta .speaker {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .turn .meta .phase-label {
+                font-size: 11px;
+                color: var(--muted);
+            }
+
+            .turn .body {
+                display: -webkit-box;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 3;
+                overflow: hidden;
+            }
+
+            .turn.recap {
+                border-left-color: #f7d794;
+                background: #1b1a12;
+            }
+
+            .turn.recap .meta {
+                color: #d0c199;
             }
 
             .vote-grid {
@@ -231,6 +275,25 @@
                 gap: 8px;
                 flex-wrap: wrap;
                 margin-top: 8px;
+            }
+
+            .vote-meta {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 6px;
+            }
+
+            .vote-error {
+                color: var(--danger);
+                font-size: 12px;
+                min-height: 14px;
+            }
+
+            .vote-note {
+                color: var(--ok);
+                font-size: 12px;
+                min-height: 14px;
             }
 
             .ok {
@@ -318,7 +381,13 @@
                     <h3 style="font-size: 14px; margin-bottom: 6px">
                         Verdict vote
                     </h3>
+                    <div class="vote-meta">
+                        <span id="verdictStatus" class="badge">Closed</span>
+                        <span id="verdictCountdown" class="muted">--:--</span>
+                    </div>
                     <div id="verdictTallies" class="vote-grid"></div>
+                    <div id="verdictError" class="vote-error"></div>
+                    <div id="verdictNote" class="vote-note"></div>
                     <div class="vote-actions" id="verdictActions"></div>
                 </div>
 
@@ -326,7 +395,13 @@
                     <h3 style="font-size: 14px; margin-bottom: 6px">
                         Sentence vote
                     </h3>
+                    <div class="vote-meta">
+                        <span id="sentenceStatus" class="badge">Closed</span>
+                        <span id="sentenceCountdown" class="muted">--:--</span>
+                    </div>
                     <div id="sentenceTallies" class="vote-grid"></div>
+                    <div id="sentenceError" class="vote-error"></div>
+                    <div id="sentenceNote" class="vote-note"></div>
                     <div class="vote-actions" id="sentenceActions"></div>
                 </div>
 

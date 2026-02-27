@@ -1,3 +1,11 @@
+import {
+    createStreamState,
+    isRecapTurn,
+    markRecap,
+    resetStreamState,
+    shouldAppendTurn,
+} from './stream-state.js';
+
 const topicInput = document.getElementById('topic');
 const caseTypeSelect = document.getElementById('caseType');
 const startBtn = document.getElementById('startBtn');
@@ -8,6 +16,14 @@ const verdictTallies = document.getElementById('verdictTallies');
 const sentenceTallies = document.getElementById('sentenceTallies');
 const verdictActions = document.getElementById('verdictActions');
 const sentenceActions = document.getElementById('sentenceActions');
+const verdictStatus = document.getElementById('verdictStatus');
+const verdictCountdown = document.getElementById('verdictCountdown');
+const verdictError = document.getElementById('verdictError');
+const verdictNote = document.getElementById('verdictNote');
+const sentenceStatus = document.getElementById('sentenceStatus');
+const sentenceCountdown = document.getElementById('sentenceCountdown');
+const sentenceError = document.getElementById('sentenceError');
+const sentenceNote = document.getElementById('sentenceNote');
 const statusEl = document.getElementById('status');
 const phaseTimer = document.getElementById('phaseTimer');
 const phaseTimerFill = document.getElementById('phaseTimerFill');
@@ -18,8 +34,25 @@ const connectionBanner = document.getElementById('connectionBanner');
 let activeSession = null;
 let source = null;
 let timerInterval = null;
+let voteCountdownInterval = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+
+const streamState = createStreamState();
+const voteState = {
+    verdict: {
+        isOpen: false,
+        closesAt: null,
+        hasVoted: false,
+        error: '',
+    },
+    sentence: {
+        isOpen: false,
+        closesAt: null,
+        hasVoted: false,
+        error: '',
+    },
+};
 
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 10_000;
@@ -52,15 +85,37 @@ function pulseActiveSpeaker() {
     activeSpeakerEl.classList.add('speaker-live');
 }
 
-function appendTurn(turn) {
+function appendTurn(turn, { recap = false } = {}) {
     const item = document.createElement('div');
     item.className = 'turn';
+    item.dataset.turnId = turn.id;
+    if (recap) {
+        item.classList.add('recap');
+    }
 
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = `#${turn.turnNumber + 1} · ${turn.role} · ${turn.speaker} · ${turn.phase}`;
+
+    const turnNumber = document.createElement('span');
+    turnNumber.className = 'turn-number';
+    turnNumber.textContent = `#${turn.turnNumber + 1}`;
+
+    const roleBadge = document.createElement('span');
+    roleBadge.className = 'role-badge';
+    roleBadge.textContent = turn.role;
+
+    const speakerName = document.createElement('span');
+    speakerName.className = 'speaker';
+    speakerName.textContent = turn.speaker;
+
+    const phaseLabel = document.createElement('span');
+    phaseLabel.className = 'phase-label';
+    phaseLabel.textContent = turn.phase;
+
+    meta.append(turnNumber, roleBadge, speakerName, phaseLabel);
 
     const body = document.createElement('div');
+    body.className = 'body';
     body.textContent = turn.dialogue;
 
     item.append(meta, body);
@@ -69,6 +124,13 @@ function appendTurn(turn) {
     activeSpeakerEl.textContent = `${turn.role} · ${turn.speaker}`;
     pulseActiveSpeaker();
     captionLineEl.textContent = turn.dialogue;
+}
+
+function markTurnRecap(turnId) {
+    const target = feed.querySelector(`[data-turn-id="${turnId}"]`);
+    if (target) {
+        target.classList.add('recap');
+    }
 }
 
 function renderTally(container, map) {
@@ -105,6 +167,8 @@ function renderTally(container, map) {
 
 async function castVote(type, choice) {
     if (!activeSession) return;
+    voteState[type].error = '';
+    renderVoteMeta();
 
     const res = await fetch(`/api/court/sessions/${activeSession.id}/vote`, {
         method: 'POST',
@@ -114,13 +178,17 @@ async function castVote(type, choice) {
 
     if (!res.ok) {
         const err = await res.json();
-        setStatus(err.error || 'Vote failed', 'error');
+        voteState[type].error = err.error || 'Vote failed';
+        renderVoteMeta();
         return;
     }
 
     const data = await res.json();
     renderTally(verdictTallies, data.verdictVotes);
     renderTally(sentenceTallies, data.sentenceVotes);
+    voteState[type].hasVoted = true;
+    renderActions(activeSession);
+    renderVoteMeta();
     setStatus('Vote recorded.');
 }
 
@@ -137,7 +205,10 @@ function renderActions(session) {
         const button = document.createElement('button');
         button.textContent = option;
         button.onclick = () => castVote('verdict', option);
-        button.disabled = session.phase !== 'verdict_vote';
+        button.disabled =
+            session.phase !== 'verdict_vote' ||
+            !voteState.verdict.isOpen ||
+            voteState.verdict.hasVoted;
         verdictActions.appendChild(button);
     }
 
@@ -145,9 +216,109 @@ function renderActions(session) {
         const button = document.createElement('button');
         button.textContent = option;
         button.onclick = () => castVote('sentence', option);
-        button.disabled = session.phase !== 'sentence_vote';
+        button.disabled =
+            session.phase !== 'sentence_vote' ||
+            !voteState.sentence.isOpen ||
+            voteState.sentence.hasVoted;
         sentenceActions.appendChild(button);
     }
+}
+
+function resetVoteState() {
+    voteState.verdict.isOpen = false;
+    voteState.verdict.closesAt = null;
+    voteState.verdict.hasVoted = false;
+    voteState.verdict.error = '';
+    voteState.sentence.isOpen = false;
+    voteState.sentence.closesAt = null;
+    voteState.sentence.hasVoted = false;
+    voteState.sentence.error = '';
+}
+
+function formatCountdown(ms) {
+    if (ms <= 0) return '00:00';
+    const minutes = Math.floor(ms / 60000)
+        .toString()
+        .padStart(2, '0');
+    const seconds = Math.floor((ms % 60000) / 1000)
+        .toString()
+        .padStart(2, '0');
+    return `${minutes}:${seconds}`;
+}
+
+function renderVoteMeta() {
+    verdictStatus.textContent = voteState.verdict.isOpen ? 'Open' : 'Closed';
+    verdictStatus.className = `badge ${voteState.verdict.isOpen ? 'ok' : ''}`;
+    verdictError.textContent = voteState.verdict.error || '';
+    verdictNote.textContent =
+        voteState.verdict.hasVoted ? 'Your vote is in.' : '';
+
+    sentenceStatus.textContent = voteState.sentence.isOpen ? 'Open' : 'Closed';
+    sentenceStatus.className = `badge ${voteState.sentence.isOpen ? 'ok' : ''}`;
+    sentenceError.textContent = voteState.sentence.error || '';
+    sentenceNote.textContent =
+        voteState.sentence.hasVoted ? 'Your vote is in.' : '';
+}
+
+function updateVoteCountdowns() {
+    const now = Date.now();
+    const verdictCloseAt = voteState.verdict.closesAt;
+    const sentenceCloseAt = voteState.sentence.closesAt;
+
+    if (verdictCloseAt) {
+        const remaining = Math.max(0, verdictCloseAt - now);
+        verdictCountdown.textContent = formatCountdown(remaining);
+        if (remaining === 0 && voteState.verdict.isOpen) {
+            voteState.verdict.isOpen = false;
+            if (activeSession) {
+                renderActions(activeSession);
+            }
+            renderVoteMeta();
+        }
+    } else {
+        verdictCountdown.textContent = '--:--';
+    }
+
+    if (sentenceCloseAt) {
+        const remaining = Math.max(0, sentenceCloseAt - now);
+        sentenceCountdown.textContent = formatCountdown(remaining);
+        if (remaining === 0 && voteState.sentence.isOpen) {
+            voteState.sentence.isOpen = false;
+            if (activeSession) {
+                renderActions(activeSession);
+            }
+            renderVoteMeta();
+        }
+    } else {
+        sentenceCountdown.textContent = '--:--';
+    }
+}
+
+function startVoteCountdowns() {
+    if (voteCountdownInterval) {
+        clearInterval(voteCountdownInterval);
+    }
+    updateVoteCountdowns();
+    voteCountdownInterval = setInterval(updateVoteCountdowns, 250);
+}
+
+function openVoteWindow(type, phaseStartedAt, phaseDurationMs) {
+    if (!phaseStartedAt || !phaseDurationMs) {
+        return;
+    }
+    const start = Date.parse(phaseStartedAt);
+    voteState[type].isOpen = true;
+    voteState[type].hasVoted = false;
+    voteState[type].error = '';
+    voteState[type].closesAt = start + phaseDurationMs;
+    renderVoteMeta();
+    startVoteCountdowns();
+}
+
+function closeVoteWindow(type, closedAt) {
+    voteState[type].isOpen = false;
+    voteState[type].closesAt = closedAt ? Date.parse(closedAt) : null;
+    renderVoteMeta();
 }
 
 function updateTimer(phaseStartedAt, phaseDurationMs) {
@@ -246,19 +417,52 @@ function connectStream(sessionId, isReconnect = false) {
             );
 
             feed.innerHTML = '';
-            turns.forEach(appendTurn);
+            resetStreamState(streamState, payload.payload);
+            turns.forEach(turn => {
+                appendTurn(turn, {
+                    recap: isRecapTurn(streamState, turn.id),
+                });
+            });
             if (turns.length === 0) {
                 activeSpeakerEl.textContent = 'Waiting for first turn…';
                 captionLineEl.textContent = 'Captions will appear here.';
             }
             renderTally(verdictTallies, verdictVotes);
             renderTally(sentenceTallies, sentenceVotes);
+            resetVoteState();
+            if (session.phase === 'verdict_vote') {
+                openVoteWindow(
+                    'verdict',
+                    session.metadata.phaseStartedAt,
+                    session.metadata.phaseDurationMs,
+                );
+            }
+            if (session.phase === 'sentence_vote') {
+                openVoteWindow(
+                    'sentence',
+                    session.metadata.phaseStartedAt,
+                    session.metadata.phaseDurationMs,
+                );
+            }
             renderActions(session);
+            renderVoteMeta();
             return;
         }
 
         if (payload.type === 'turn') {
-            appendTurn(payload.payload.turn);
+            const turn = payload.payload.turn;
+            if (!shouldAppendTurn(streamState, turn)) {
+                return;
+            }
+            appendTurn(turn, {
+                recap: isRecapTurn(streamState, turn.id),
+            });
+            return;
+        }
+
+        if (payload.type === 'judge_recap_emitted') {
+            markRecap(streamState, payload.payload.turnId);
+            markTurnRecap(payload.payload.turnId);
             return;
         }
 
@@ -276,6 +480,20 @@ function connectStream(sessionId, isReconnect = false) {
                 payload.payload.phaseStartedAt,
                 payload.payload.phaseDurationMs,
             );
+            if (payload.payload.phase === 'verdict_vote') {
+                openVoteWindow(
+                    'verdict',
+                    payload.payload.phaseStartedAt,
+                    payload.payload.phaseDurationMs,
+                );
+            }
+            if (payload.payload.phase === 'sentence_vote') {
+                openVoteWindow(
+                    'sentence',
+                    payload.payload.phaseStartedAt,
+                    payload.payload.phaseDurationMs,
+                );
+            }
             return;
         }
 
@@ -293,12 +511,19 @@ function connectStream(sessionId, isReconnect = false) {
             setStatus(
                 `${payload.payload.pollType} poll closed with ${voteTotal} vote${voteTotal === 1 ? '' : 's'}.`,
             );
+            closeVoteWindow(payload.payload.pollType, payload.payload.closedAt);
+            if (activeSession) {
+                renderActions(activeSession);
+            }
             return;
         }
 
         if (payload.type === 'session_completed') {
             setStatus('Session complete. Verdict delivered.');
             updateTimer();
+            voteState.verdict.isOpen = false;
+            voteState.sentence.isOpen = false;
+            renderVoteMeta();
         }
 
         if (payload.type === 'session_failed') {
