@@ -55,7 +55,7 @@ Creates and immediately starts a new court session.
 
 | Field             | Type                    | Required | Description                                                                             |
 | ----------------- | ----------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `topic`           | `string`                | ✅       | Case description. Minimum 10 characters. Screened for safety.                           |
+| `topic`           | `string`                | ❌       | Case description. When provided, must be at least 10 characters and will be screened for safety. If omitted or empty, falls back to a prompt-bank entry. |
 | `caseType`        | `"criminal" \| "civil"` | ❌       | Defaults to `"criminal"`.                                                               |
 | `participants`    | `AgentId[]`             | ❌       | List of agent IDs to include. Defaults to all six agents. Must be at least 4 valid IDs. |
 | `sentenceOptions` | `string[]`              | ❌       | Custom sentence choices for the sentencing poll. Defaults to five built-in options.     |

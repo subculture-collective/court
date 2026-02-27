@@ -145,15 +145,23 @@ async function generateTurn(input: {
             :   undefined,
     });
 
+    // Keep local session state in sync with the store so recentHistory() sees this turn.
+    session.turns.push(turn);
+    session.turnCount += 1;
+
     if (moderation.flagged && role !== 'judge') {
         const judgeId = session.metadata.roleAssignments.judge;
-        await store.addTurn({
+        const judgeTurn = await store.addTurn({
             sessionId: session.id,
             speaker: judgeId,
             role: 'judge',
             phase: session.phase,
             dialogue: MODERATION_REDIRECT_DIALOGUE,
         });
+
+        // Also reflect the judge redirect in local session state.
+        session.turns.push(judgeTurn);
+        session.turnCount += 1;
     }
 
     if (capResult?.capped && !moderation.flagged) {

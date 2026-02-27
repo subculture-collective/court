@@ -149,6 +149,11 @@ export async function createServerApp(
             try {
                 selectedPrompt = selectNextSafePrompt(genreHistory);
             } catch (error) {
+                // eslint-disable-next-line no-console
+                console.error(
+                    '[server] selectNextSafePrompt failed:',
+                    error instanceof Error ? error.message : error,
+                );
                 return sendError(
                     res,
                     503,
