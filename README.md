@@ -16,6 +16,7 @@ It does **not** depend on `subcult-corp` at runtime.
   - `final_ruling`
 - Live SSE stream per session
 - Jury verdict and sentence voting endpoints
+- Deterministic phase-order and vote-window enforcement
 - Minimal stripped web UI (`public/index.html`)
 
 ## Environment

@@ -250,6 +250,11 @@ export async function runCourtSession(
             latest.metadata.sentenceVotes,
             latest.metadata.sentenceOptions[0],
         );
+        await store.recordFinalRuling({
+            sessionId: session.id,
+            verdict: winningVerdict,
+            sentence: winningSentence,
+        });
 
         await generateTurn({
             store,

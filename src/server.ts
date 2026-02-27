@@ -5,7 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { AGENT_IDS, isValidAgent } from './agents.js';
 import { assignCourtRoles } from './court/roles.js';
 import { runCourtSession } from './court/orchestrator.js';
-import { createCourtSessionStore } from './store/session-store.js';
+import {
+    CourtNotFoundError,
+    CourtValidationError,
+    createCourtSessionStore,
+} from './store/session-store.js';
 import type { AgentId, CaseType, CourtPhase } from './types.js';
 
 const validPhases: CourtPhase[] = [
@@ -163,7 +167,11 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to cast vote';
-            return res.status(404).json({ error: message });
+            const status =
+                error instanceof CourtValidationError ? 400
+                : error instanceof CourtNotFoundError ? 404
+                : 500;
+            return res.status(status).json({ error: message });
         }
     });
 
@@ -188,7 +196,11 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to set phase';
-            return res.status(404).json({ error: message });
+            const status =
+                error instanceof CourtValidationError ? 400
+                : error instanceof CourtNotFoundError ? 404
+                : 500;
+            return res.status(status).json({ error: message });
         }
     });
 

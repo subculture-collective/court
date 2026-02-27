@@ -67,6 +67,11 @@ export interface CourtSessionMetadata {
     sentenceVoteWindowMs: number;
     verdictVotes: Record<string, number>;
     sentenceVotes: Record<string, number>;
+    finalRuling?: {
+        verdict: string;
+        sentence: string;
+        decidedAt: string;
+    };
     roleAssignments: CourtRoleAssignments;
 }
 
