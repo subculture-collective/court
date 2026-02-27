@@ -9,6 +9,7 @@ It does **not** depend on `subcult-corp` at runtime.
 
 | Document | Description |
 |---|---|
+| [docs/ADR-001-improv-court-architecture.md](docs/ADR-001-improv-court-architecture.md) | Architecture Decision Record: runtime boundaries, data contracts, and phase invariants |
 | [docs/architecture.md](docs/architecture.md) | System architecture, agent roles, and phase flow |
 | [docs/api.md](docs/api.md) | REST API endpoints, schemas, and SSE event contracts |
 | [docs/operator-runbook.md](docs/operator-runbook.md) | Setup, configuration, deployment, and monitoring |

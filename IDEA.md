@@ -211,6 +211,10 @@ Designed to be naturally robust with stream delay:
 
 ## Product Strategy: What to Ship First 🛠️
 
+### Architecture Decision Record
+
+See [docs/ADR-001-improv-court-architecture.md](docs/ADR-001-improv-court-architecture.md) for runtime boundaries, module ownership, phase-state contracts, and API/SSE/persistence contracts.
+
 ### Phase 1 — Improv Court = “Orchestration/Overlay Engine Test”
 
 Proves:
