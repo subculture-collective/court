@@ -38,4 +38,4 @@ Use this queue to intake, triage, and prioritize debt discovered during incident
 | DEBT-001 | Add SSE reconnect-storm synthetic check in staging smoke flow | Retro: SSE reconnect storm (2026-02-27) | P1 | S | Stream regressions may reoccur undetected | QA/Backend | Next sprint | Open |
 | DEBT-002 | Add dedicated stream health probe history panel for operator dashboard | Retro: SSE reconnect storm (2026-02-27) | P2 | M | Slower diagnosis during live incidents | Ops tooling | Next sprint | Open |
 | DEBT-003 | Harden reconnect backoff policy and document tunable defaults | Retro: SSE reconnect storm (2026-02-27) | P1 | M | Viewer churn during transient network issues | Backend | Next sprint | Open |
-| DEBT-004 | Add operator canned emergency-recap script to runbook appendix | Retro: SSE reconnect storm (2026-02-27) | P3 | XS | Inconsistent incident comms quality | Ops | Sprint +1 | Open |
+| DEBT-004 | Add operator canned emergency-recap script to runbook appendix | Retro: SSE reconnect storm (2026-02-27) | P2 | XS | Inconsistent incident comms quality | Ops | Sprint +1 | Open |
