@@ -90,6 +90,20 @@ export interface CourtSession {
     failureReason?: string;
 }
 
+export type ModerationReasonCode =
+    | 'hate_speech'
+    | 'violence'
+    | 'harassment'
+    | 'sexual_content'
+    | 'slur';
+
+export interface ModerationResult {
+    flagged: boolean;
+    reasons: ModerationReasonCode[];
+    original: string;
+    sanitized: string;
+}
+
 export type CourtEventType =
     | 'session_created'
     | 'session_started'
@@ -97,6 +111,8 @@ export type CourtEventType =
     | 'turn'
     | 'vote_updated'
     | 'analytics_event'
+    | 'moderation_action'
+    | 'vote_spam_blocked'
     | 'session_completed'
     | 'session_failed';
 

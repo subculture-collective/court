@@ -98,6 +98,10 @@ export interface CourtSessionStore {
         role: CourtRole;
         phase: CourtPhase;
         dialogue: string;
+        moderationResult?: {
+            flagged: boolean;
+            reasons: string[];
+        };
     }): Promise<CourtTurn>;
     castVote(input: {
         sessionId: string;
@@ -116,6 +120,11 @@ export interface CourtSessionStore {
         sessionId: string,
         handler: (event: CourtEvent) => void,
     ): () => void;
+    emitEvent(
+        sessionId: string,
+        type: CourtEvent['type'],
+        payload: Record<string, unknown>,
+    ): void;
 }
 
 class InMemoryCourtSessionStore implements CourtSessionStore {
@@ -235,6 +244,10 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         role: CourtRole;
         phase: CourtPhase;
         dialogue: string;
+        moderationResult?: {
+            flagged: boolean;
+            reasons: string[];
+        };
     }): Promise<CourtTurn> {
         const session = this.mustGet(input.sessionId);
 
@@ -257,6 +270,19 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             type: 'turn',
             payload: { turn },
         });
+
+        if (input.moderationResult?.flagged) {
+            this.publish({
+                sessionId: input.sessionId,
+                type: 'moderation_action',
+                payload: {
+                    turnId: turn.id,
+                    speaker: input.speaker,
+                    reasons: input.moderationResult.reasons,
+                    phase: input.phase,
+                },
+            });
+        }
 
         return deepCopy(turn);
     }
@@ -380,6 +406,14 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         return () => {
             this.eventEmitter.off(channel, handler);
         };
+    }
+
+    emitEvent(
+        sessionId: string,
+        type: CourtEvent['type'],
+        payload: Record<string, unknown>,
+    ): void {
+        this.publish({ sessionId, type, payload });
     }
 
     private publish(input: {
@@ -631,6 +665,10 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         role: CourtRole;
         phase: CourtPhase;
         dialogue: string;
+        moderationResult?: {
+            flagged: boolean;
+            reasons: string[];
+        };
     }): Promise<CourtTurn> {
         const turn = await this.db.begin(async (tx: any) => {
             const [session] = await tx<SessionRow[]>`
@@ -695,6 +733,19 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             type: 'turn',
             payload: { turn },
         });
+
+        if (input.moderationResult?.flagged) {
+            this.publish({
+                sessionId: input.sessionId,
+                type: 'moderation_action',
+                payload: {
+                    turnId: turn.id,
+                    speaker: input.speaker,
+                    reasons: input.moderationResult.reasons,
+                    phase: input.phase,
+                },
+            });
+        }
 
         return turn;
     }
@@ -914,6 +965,14 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         return () => {
             this.eventEmitter.off(channel, handler);
         };
+    }
+
+    emitEvent(
+        sessionId: string,
+        type: CourtEvent['type'],
+        payload: Record<string, unknown>,
+    ): void {
+        this.publish({ sessionId, type, payload });
     }
 
     private publish(input: {
