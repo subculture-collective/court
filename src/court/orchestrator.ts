@@ -2,6 +2,10 @@ import { AGENTS } from '../agents.js';
 import { llmGenerate, sanitizeDialogue } from '../llm/client.js';
 import { moderateContent } from '../moderation/content-filter.js';
 import { createTTSAdapterFromEnv, type TTSAdapter } from '../tts/adapter.js';
+import {
+    createBroadcastAdapterFromEnv,
+    safeBroadcastHook,
+} from '../broadcast/adapter.js';
 import { applyWitnessCap, resolveWitnessCapConfig } from './witness-caps.js';
 import type { WitnessCapConfig } from './witness-caps.js';
 import type {
@@ -55,6 +59,7 @@ async function generateTurn(input: {
         caseType: session.metadata.caseType,
         phase: session.phase,
         history: recentHistory(session.turns),
+        genre: session.metadata.currentGenre, // Phase 3: Pass genre for prompt variations
     });
 
     const raw = await llmGenerate({
@@ -84,6 +89,18 @@ async function generateTurn(input: {
         console.warn(
             `[moderation] content flagged session=${session.id} speaker=${speaker} reasons=${moderation.reasons.join(',')}`,
         );
+
+        // Phase 3: Increment objection count on moderation
+        const currentCount = session.metadata.objectionCount || 0;
+        const newCount = currentCount + 1;
+        session.metadata.objectionCount = newCount;
+
+        // Emit objection count changed event
+        store.emitEvent(session.id, 'objection_count_changed', {
+            count: newCount,
+            phase: session.phase,
+            changedAt: new Date().toISOString(),
+        });
     }
 
     const turn = await input.store.addTurn({
@@ -130,6 +147,7 @@ export async function runCourtSession(
 ): Promise<void> {
     const session = await store.startSession(sessionId);
     const tts = options.ttsAdapter ?? createTTSAdapterFromEnv();
+    const broadcast = await createBroadcastAdapterFromEnv(); // Phase 3: Initialize broadcast adapter
     const pause = options.sleepFn ?? sleep;
     const witnessCapConfig = resolveWitnessCapConfig();
     const recapCadenceRaw = Number.parseInt(
@@ -174,6 +192,22 @@ export async function runCourtSession(
 
         session.phase = 'case_prompt';
         await store.setPhase(session.id, 'case_prompt', 8_000);
+
+        // Phase 3: Trigger broadcast hooks
+        await safeBroadcastHook(
+            'phase_stinger',
+            () =>
+                broadcast.triggerPhaseStinger({
+                    phase: 'case_prompt',
+                    sessionId: session.id,
+                }),
+            (type, payload) =>
+                store.emitEvent(session.id, type, {
+                    phase: 'case_prompt',
+                    ...payload,
+                }),
+        );
+
         const allRiseCue = `All rise. The Court of Improvised Absurdity is now in session. Case: ${session.topic}`;
         await safelySpeak('speakCue', () =>
             tts.speakCue({
@@ -306,6 +340,27 @@ export async function runCourtSession(
             await pause(800);
         }
 
+        // Phase 3: Evidence reveal phase (currently skipped, placeholder for future implementation)
+        // TODO: Implement evidence_reveal phase logic
+        // Example of how evidence could be revealed:
+        // session.phase = 'evidence_reveal';
+        // await store.setPhase(session.id, 'evidence_reveal', 15_000);
+        // const evidenceText = await generateEvidenceCard(session, judge);
+        // const evidenceId = `evidence_${Date.now()}`;
+        // session.metadata.evidenceCards = session.metadata.evidenceCards || [];
+        // session.metadata.evidenceCards.push({
+        //     id: evidenceId,
+        //     text: evidenceText,
+        //     revealedAt: new Date().toISOString(),
+        // });
+        // store.emitEvent(session.id, 'evidence_revealed', {
+        //     evidenceId,
+        //     evidenceText,
+        //     phase: 'evidence_reveal',
+        //     revealedAt: new Date().toISOString(),
+        // });
+        // await pause(800);
+
         session.phase = 'closings';
         await store.setPhase(session.id, 'closings', 30_000);
         await safelySpeak('speakCue', () =>
@@ -341,6 +396,23 @@ export async function runCourtSession(
             'verdict_vote',
             session.metadata.verdictVoteWindowMs,
         );
+
+        // Phase 3: Trigger broadcast hooks for verdict voting
+        await safeBroadcastHook(
+            'scene_switch',
+            () =>
+                broadcast.triggerSceneSwitch({
+                    sceneName: 'verdict_vote',
+                    phase: 'verdict_vote',
+                    sessionId: session.id,
+                }),
+            (type, payload) =>
+                store.emitEvent(session.id, type, {
+                    phase: 'verdict_vote',
+                    ...payload,
+                }),
+        );
+
         await store.addTurn({
             sessionId: session.id,
             speaker: bailiff,
@@ -362,6 +434,22 @@ export async function runCourtSession(
             session.id,
             'sentence_vote',
             session.metadata.sentenceVoteWindowMs,
+        );
+
+        // Phase 3: Trigger broadcast hooks for sentence voting
+        await safeBroadcastHook(
+            'scene_switch',
+            () =>
+                broadcast.triggerSceneSwitch({
+                    sceneName: 'sentence_vote',
+                    phase: 'sentence_vote',
+                    sessionId: session.id,
+                }),
+            (type, payload) =>
+                store.emitEvent(session.id, type, {
+                    phase: 'sentence_vote',
+                    ...payload,
+                }),
         );
         await store.addTurn({
             sessionId: session.id,

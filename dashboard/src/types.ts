@@ -7,7 +7,27 @@ export interface CourtEvent {
     content?: string;
     voterId?: string;
     vote?: string;
+    // Phase 3 additions
+    evidenceId?: string;
+    evidenceText?: string;
+    revealedAt?: string;
+    count?: number;
+    changedAt?: string;
     [key: string]: unknown;
+}
+
+// Phase 3 payload types
+export interface EvidenceRevealedPayload {
+    evidenceId: string;
+    evidenceText: string;
+    phase: string;
+    revealedAt: string;
+}
+
+export interface ObjectionCountChangedPayload {
+    count: number;
+    phase: string;
+    changedAt: string;
 }
 
 export interface SessionSnapshot {

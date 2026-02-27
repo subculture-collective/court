@@ -1,0 +1,240 @@
+/**
+ * Curated prompt bank with genre rotation logic.
+ *
+ * Provides a collection of case prompts organized by genre tags,
+ * with deterministic rotation to avoid immediate repeats.
+ */
+
+import type { GenreTag, PromptBankEntry, CaseType } from '../types.js';
+
+// ---------------------------------------------------------------------------
+// Prompt Bank
+// ---------------------------------------------------------------------------
+
+/**
+ * Curated collection of case prompts organized by genre.
+ * Each entry includes the full case prompt, case type, and activation flag.
+ */
+export const PROMPT_BANK: PromptBankEntry[] = [
+    // Absurd Civil cases
+    {
+        id: 'absurd_civil_001',
+        genre: 'absurd_civil',
+        casePrompt:
+            'A person is suing their neighbor for emotional damages after the neighbor trained their parrot to loudly recite Shakespearean insults at predictable hours.',
+        caseType: 'civil',
+        active: true,
+    },
+    {
+        id: 'absurd_civil_002',
+        genre: 'absurd_civil',
+        casePrompt:
+            'A food critic is suing a restaurant for serving a dish so delicious it caused them to forget how to write negative reviews.',
+        caseType: 'civil',
+        active: true,
+    },
+    {
+        id: 'absurd_civil_003',
+        genre: 'absurd_civil',
+        casePrompt:
+            'A professional mime is suing their understudy for violating the sacred code of silence by accidentally saying "ouch" during a performance.',
+        caseType: 'civil',
+        active: true,
+    },
+
+    // Cosmic Crime cases
+    {
+        id: 'cosmic_crime_001',
+        genre: 'cosmic_crime',
+        casePrompt:
+            "A time traveler is accused of stealing their own past self's lunch from the break room refrigerator, creating a paradox.",
+        caseType: 'criminal',
+        active: true,
+    },
+    {
+        id: 'cosmic_crime_002',
+        genre: 'cosmic_crime',
+        casePrompt:
+            'An alien diplomat is charged with illegally importing forbidden gravity-defying dance moves to Earth nightclubs.',
+        caseType: 'criminal',
+        active: true,
+    },
+    {
+        id: 'cosmic_crime_003',
+        genre: 'cosmic_crime',
+        casePrompt:
+            'A wizard is accused of enchanting a coffee machine to produce sentient espresso that unionized and demanded benefits.',
+        caseType: 'criminal',
+        active: true,
+    },
+
+    // Workplace Tribunal cases
+    {
+        id: 'workplace_tribunal_001',
+        genre: 'workplace_tribunal',
+        casePrompt:
+            'An employee is filing a grievance against their manager for mandatory attendance at 6 AM "sunrise gratitude circles" with interpretive dance.',
+        caseType: 'civil',
+        active: true,
+    },
+    {
+        id: 'workplace_tribunal_002',
+        genre: 'workplace_tribunal',
+        casePrompt:
+            'A programmer is suing their company for forcing them to use Comic Sans in all production code repositories.',
+        caseType: 'civil',
+        active: true,
+    },
+    {
+        id: 'workplace_tribunal_003',
+        genre: 'workplace_tribunal',
+        casePrompt:
+            'An office worker claims constructive dismissal after their cubicle was relocated to the "inspirational whale sounds meditation zone."',
+        caseType: 'civil',
+        active: true,
+    },
+
+    // Fantasy Court cases
+    {
+        id: 'fantasy_court_001',
+        genre: 'fantasy_court',
+        casePrompt:
+            'A dragon is accused of insurance fraud for claiming fire damage on their own cave after a particularly enthusiastic sneeze.',
+        caseType: 'criminal',
+        active: true,
+    },
+    {
+        id: 'fantasy_court_002',
+        genre: 'fantasy_court',
+        casePrompt:
+            'A knight is suing their armor manufacturer for false advertising after the "dragon-proof" plating melted during the first encounter.',
+        caseType: 'civil',
+        active: true,
+    },
+    {
+        id: 'fantasy_court_003',
+        genre: 'fantasy_court',
+        casePrompt:
+            'A fairy godmother is charged with operating an unlicensed wish-granting business without proper magical permits.',
+        caseType: 'criminal',
+        active: true,
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Rotation Logic
+// ---------------------------------------------------------------------------
+
+/**
+ * Default rotation configuration.
+ * - minDistance: 2 (genre used at session N cannot appear until session N+2)
+ * - maxHistorySize: 10 (track last 10 genres for rotation decisions)
+ */
+export const DEFAULT_ROTATION_CONFIG = {
+    minDistance: 2,
+    maxHistorySize: 10,
+};
+
+function stableHash(input: string): number {
+    let hash = 0;
+    for (let i = 0; i < input.length; i += 1) {
+        hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+    }
+    return hash;
+}
+
+/**
+ * Selects the next prompt from the bank, avoiding genres that violate
+ * the minimum distance constraint.
+ *
+ * Algorithm:
+ * 1. Filter out inactive prompts
+ * 2. Identify genres that violate minDistance (appeared in last N sessions)
+ * 3. Select from remaining genres with equal probability
+ * 4. If all genres are exhausted (depleted pool), ignore distance constraint
+ *
+ * @param genreHistory - Array of recently used genres (most recent last)
+ * @param activeGenres - Optional filter to restrict to specific genres
+ * @param minDistance - Minimum sessions before genre can repeat (default: 2)
+ * @returns Selected prompt entry
+ */
+export function selectNextPrompt(
+    genreHistory: GenreTag[] = [],
+    activeGenres?: GenreTag[],
+    minDistance: number = DEFAULT_ROTATION_CONFIG.minDistance,
+): PromptBankEntry {
+    // Filter to active prompts only
+    let candidates = PROMPT_BANK.filter(p => p.active);
+
+    // Apply genre filter if specified
+    if (activeGenres && activeGenres.length > 0) {
+        candidates = candidates.filter(p => activeGenres.includes(p.genre));
+    }
+
+    if (candidates.length === 0) {
+        throw new Error(
+            'No active prompts available in the prompt bank. Check PROMPT_BANK and activeGenres filter.',
+        );
+    }
+
+    // Identify recently used genres (within minDistance window)
+    const recentGenres = new Set(
+        genreHistory.slice(-minDistance).filter(Boolean),
+    );
+
+    // Filter out prompts with recently used genres
+    let availablePrompts = candidates.filter(p => !recentGenres.has(p.genre));
+
+    // Depleted pool fallback: if all genres are recent, allow any candidate
+    if (availablePrompts.length === 0) {
+        console.warn(
+            `[prompt-bank] All genres recently used (history=${genreHistory.join(',')}). Allowing any genre.`,
+        );
+        availablePrompts = candidates;
+    }
+
+    // Deterministic selection based on history and available prompt IDs
+    const sortedPrompts = [...availablePrompts].sort((a, b) =>
+        a.id.localeCompare(b.id),
+    );
+    const seed = stableHash(
+        `${genreHistory.join('|')}|${sortedPrompts.map(p => p.id).join('|')}`,
+    );
+    const selected = sortedPrompts[seed % sortedPrompts.length];
+
+    return selected;
+}
+
+/**
+ * Safety screen hook for prompt validation.
+ * Currently a no-op placeholder that will integrate with moderation pipeline.
+ *
+ * Future implementation will:
+ * - Check prompt against content filters
+ * - Verify prompt meets clean courtroom policy
+ * - Flag any prompt-specific safety concerns
+ *
+ * @param prompt - Prompt to validate
+ * @returns True if prompt passes safety checks
+ */
+export function validatePromptForSession(prompt: PromptBankEntry): boolean {
+    // Placeholder: always pass for now
+    // TODO: Wire to moderation/content-filter.ts pipeline in Phase 4
+    return prompt.active;
+}
+
+/**
+ * Gets all unique genres currently in the active prompt bank.
+ * Useful for UI genre selectors and analytics.
+ */
+export function getAvailableGenres(): GenreTag[] {
+    const genres = new Set(PROMPT_BANK.filter(p => p.active).map(p => p.genre));
+    return Array.from(genres);
+}
+
+/**
+ * Gets all prompts for a specific genre.
+ */
+export function getPromptsByGenre(genre: GenreTag): PromptBankEntry[] {
+    return PROMPT_BANK.filter(p => p.active && p.genre === genre);
+}

@@ -6,13 +6,17 @@ import { AGENT_IDS, isValidAgent } from './agents.js';
 import { assignCourtRoles } from './court/roles.js';
 import { runCourtSession } from './court/orchestrator.js';
 import {
+    selectNextPrompt,
+    DEFAULT_ROTATION_CONFIG,
+} from './court/prompt-bank.js';
+import {
     CourtNotFoundError,
     CourtValidationError,
     type CourtSessionStore,
     createCourtSessionStore,
 } from './store/session-store.js';
 import { VoteSpamGuard } from './moderation/vote-spam.js';
-import type { AgentId, CaseType, CourtPhase } from './types.js';
+import type { AgentId, CaseType, CourtPhase, GenreTag } from './types.js';
 
 const validPhases: CourtPhase[] = [
     'case_prompt',
@@ -104,10 +108,26 @@ export async function createServerApp(
 
     app.post('/api/court/sessions', async (req, res) => {
         try {
+            // Phase 3: Build genre history from recent sessions
+            const recentSessions = await store.listSessions();
+            const genreHistory: GenreTag[] = recentSessions
+                .filter(s => s.metadata.currentGenre)
+                .sort(
+                    (a, b) =>
+                        new Date(a.createdAt).getTime() -
+                        new Date(b.createdAt).getTime(),
+                )
+                .slice(-DEFAULT_ROTATION_CONFIG.maxHistorySize)
+                .map(s => s.metadata.currentGenre!)
+                .filter(Boolean);
+
+            // Phase 3: Select next prompt from bank using genre rotation
+            const selectedPrompt = selectNextPrompt(genreHistory);
+
             const topic =
                 typeof req.body?.topic === 'string' ?
                     req.body.topic.trim()
-                :   '';
+                :   selectedPrompt.casePrompt; // Use selected prompt if no topic provided
 
             if (topic.length < 10) {
                 return sendError(
@@ -119,7 +139,9 @@ export async function createServerApp(
             }
 
             const caseType: CaseType =
-                req.body?.caseType === 'civil' ? 'civil' : 'criminal';
+                req.body?.caseType === 'civil' ? 'civil'
+                : req.body?.caseType === 'criminal' ? 'criminal'
+                : selectedPrompt.caseType; // Use selected prompt's case type if not specified
 
             const participantsInput =
                 Array.isArray(req.body?.participants) ?
@@ -157,6 +179,12 @@ export async function createServerApp(
 
             const roleAssignments = assignCourtRoles(participants);
 
+            // Phase 3: Update genre history
+            const updatedGenreHistory = [
+                ...genreHistory,
+                selectedPrompt.genre,
+            ].slice(-DEFAULT_ROTATION_CONFIG.maxHistorySize);
+
             const session = await store.createSession({
                 topic,
                 participants,
@@ -170,6 +198,11 @@ export async function createServerApp(
                     verdictVotes: {},
                     sentenceVotes: {},
                     roleAssignments,
+                    // Phase 3: Add genre tracking
+                    currentGenre: selectedPrompt.genre,
+                    genreHistory: updatedGenreHistory,
+                    evidenceCards: [],
+                    objectionCount: 0,
                 },
             });
 

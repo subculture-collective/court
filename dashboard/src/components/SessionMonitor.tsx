@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { CourtEvent, SessionSnapshot, TranscriptEntry } from '../types';
+import { EvidenceCard } from './EvidenceCard';
+import { ObjectionCounter } from './ObjectionCounter';
 
 interface SessionMonitorProps {
     events: CourtEvent[];
@@ -45,6 +47,26 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
     }
 
     const latestEvents = events.slice(-10).reverse();
+
+    // Phase 3: Extract evidence cards from events
+    const evidenceCards = useMemo(() => {
+        return events
+            .filter(e => e.type === 'evidence_revealed')
+            .map(e => ({
+                evidenceId: e.evidenceId || '',
+                evidenceText: e.evidenceText || '',
+                revealedAt: e.revealedAt || e.timestamp,
+            }));
+    }, [events]);
+
+    // Phase 3: Extract objection count from events
+    const objectionCount = useMemo(() => {
+        const objectionEvents = events.filter(
+            e => e.type === 'objection_count_changed',
+        );
+        if (objectionEvents.length === 0) return 0;
+        return objectionEvents[objectionEvents.length - 1].count || 0;
+    }, [events]);
 
     return (
         <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
@@ -134,6 +156,33 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                     statements
                 </div>
             </div>
+
+            {/* Phase 3: Objection Counter */}
+            <div className='bg-gray-800 rounded-lg p-6 shadow-lg'>
+                <h2 className='text-xl font-semibold mb-4 text-primary-400'>
+                    Objections
+                </h2>
+                <ObjectionCounter count={objectionCount} />
+            </div>
+
+            {/* Phase 3: Evidence Cards */}
+            {evidenceCards.length > 0 && (
+                <div className='bg-gray-800 rounded-lg p-6 shadow-lg lg:col-span-2'>
+                    <h2 className='text-xl font-semibold mb-4 text-primary-400'>
+                        Evidence Revealed
+                    </h2>
+                    <div className='space-y-4'>
+                        {evidenceCards.map(card => (
+                            <EvidenceCard
+                                key={card.evidenceId}
+                                evidenceId={card.evidenceId}
+                                evidenceText={card.evidenceText}
+                                revealedAt={card.revealedAt}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Vote Tallies */}
             <div className='bg-gray-800 rounded-lg p-6 shadow-lg'>

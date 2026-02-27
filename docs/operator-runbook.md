@@ -64,6 +64,7 @@ Open `http://localhost:3001` in a browser.
 ## 2 — Docker Compose Stack (API + Postgres)
 
 The compose file starts two services:
+
 - `api` — the Improv Court server (builds from `Dockerfile`)
 - `db` — Postgres 16
 

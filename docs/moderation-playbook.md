@@ -50,9 +50,11 @@ The filter (`src/moderation/content-filter.ts`) uses regular expression rules to
    > `[The witness statement has been redacted by the court for decorum violations.]`
 2. A `moderation_action` SSE event is emitted to all stream subscribers.
 3. A warning is written to the server log:
+
    ```
    [moderation] content flagged session=<id> speaker=<agentId> reasons=<code,code>
    ```
+
 4. Orchestration continues normally with the sanitized text.
 
 ### Limitations
@@ -68,9 +70,11 @@ Operators should monitor live sessions and be prepared to intervene manually.
 The `VoteSpamGuard` (source: `src/moderation/vote-spam.ts`) limits voting to **10 votes per IP per session per 60 seconds**.
 
 When a vote is blocked:
+
 - The API returns HTTP 429 with `{ "error": "Too many votes. Please slow down." }`.
 - A `vote_spam_blocked` SSE event is emitted.
 - A warning is written to the server log:
+
   ```
   [vote-spam] blocked ip=<ip> session=<id>
   ```
@@ -90,12 +94,15 @@ const voteSpamGuard = new VoteSpamGuard({ maxVotesPerWindow: 3, windowMs: 60_000
 **Symptoms:** `[moderation]` log entries repeating for the same session or speaker.
 
 **Steps:**
+
 1. If the session is ongoing, advance it to `final_ruling` to end the vote windows immediately:
+
    ```bash
    curl -s -X POST http://localhost:3001/api/court/sessions/<SESSION_ID>/phase \
      -H 'Content-Type: application/json' \
      -d '{"phase":"final_ruling"}'
    ```
+
 2. If the content is still harmful after redaction, terminate the session by stopping the process or, for production deployments, kill the Docker service and restart clean.
 3. Review the case prompt and revise it to remove ambiguous phrasing that may have elicited the output.
 4. Do **not** add new pattern rules to the content filter without testing against the existing test suite (`src/moderation/content-filter.test.ts`).
@@ -105,12 +112,15 @@ const voteSpamGuard = new VoteSpamGuard({ maxVotesPerWindow: 3, windowMs: 60_000
 **Symptoms:** Phase timer appears expired but the next phase has not started; no new SSE events.
 
 **Steps:**
+
 1. Manually set the next expected phase:
+
    ```bash
    curl -s -X POST http://localhost:3001/api/court/sessions/<SESSION_ID>/phase \
      -H 'Content-Type: application/json' \
      -d '{"phase":"<next_phase>"}'
    ```
+
 2. Check server logs for errors (LLM timeout, Postgres connectivity).
 3. If the orchestrator threw and marked the session `failed`, create a new session with the same parameters.
 
@@ -119,6 +129,7 @@ const voteSpamGuard = new VoteSpamGuard({ maxVotesPerWindow: 3, windowMs: 60_000
 **Symptoms:** Agent dialogue is off-topic, breaks character, or contains LLM meta-commentary.
 
 **Steps:**
+
 1. This is expected occasionally — the automated `sanitizeDialogue` step strips markdown and XML artefacts.
 2. If quality degrades severely, consider switching to a different `LLM_MODEL` in `.env` and restarting the server.
 3. The mock mode (`OPENROUTER_API_KEY` unset) is always available as a stable fallback for demos and testing.
@@ -128,6 +139,7 @@ const voteSpamGuard = new VoteSpamGuard({ maxVotesPerWindow: 3, windowMs: 60_000
 **Symptoms:** `[vote-spam]` log entries from a single IP; vote tallies look abnormal.
 
 **Steps:**
+
 1. The guard blocks further votes automatically after the threshold is exceeded.
 2. If the IP bypass is suspected (proxied clients), reduce `maxVotesPerWindow` and redeploy.
 3. For extreme cases, disable the `/api/court/sessions/:id/vote` endpoint by proxying requests through an authentication layer or removing public access.
@@ -137,6 +149,7 @@ const voteSpamGuard = new VoteSpamGuard({ maxVotesPerWindow: 3, windowMs: 60_000
 **Symptoms:** Server restarted; sessions were in `running` state.
 
 **Steps:**
+
 1. On startup, the server automatically calls `store.recoverInterruptedSessions()` and re-starts orchestration for each interrupted session.
 2. Verify recovery by querying `GET /api/court/sessions` and confirming the session status transitions from `running` back to `completed`.
 3. If the session is stuck in `running` after restart with in-memory storage (non-Postgres), session state has been lost. Create a new session.
