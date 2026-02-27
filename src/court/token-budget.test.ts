@@ -57,14 +57,17 @@ test('applyRoleTokenBudget enforces env cap and reports source', () => {
     assert.equal(passthrough.source, 'requested');
 });
 
-test('applyRoleTokenBudget falls back to default when requested is undefined or zero', () => {
+test('applyRoleTokenBudget falls back to default request and still enforces role cap', () => {
     const config = resolveRoleTokenBudgetConfig({ ROLE_MAX_TOKENS_DEFAULT: '300' });
+    const judgeLimit = roleTokenLimit('judge', config);
 
     const fromUndefined = applyRoleTokenBudget('judge', undefined, config);
-    assert.equal(fromUndefined.appliedMaxTokens, config.defaultMaxTokens);
+    assert.equal(fromUndefined.requestedMaxTokens, config.defaultMaxTokens);
+    assert.equal(fromUndefined.appliedMaxTokens, Math.min(config.defaultMaxTokens, judgeLimit));
 
     const fromZero = applyRoleTokenBudget('judge', 0, config);
-    assert.equal(fromZero.appliedMaxTokens, config.defaultMaxTokens);
+    assert.equal(fromZero.requestedMaxTokens, config.defaultMaxTokens);
+    assert.equal(fromZero.appliedMaxTokens, Math.min(config.defaultMaxTokens, judgeLimit));
 });
 
 test('estimateCostUsd computes stable rounded estimate', () => {

@@ -54,12 +54,7 @@ export class VoteSpamGuard {
             this.records.set(key, record);
         }
 
-        record.timestamps = record.timestamps.filter(t => t > cutoff);
-        for (const [value, timestamp] of record.recentChoices) {
-            if (timestamp <= duplicateCutoff) {
-                record.recentChoices.delete(value);
-            }
-        }
+        this.cleanupRecord(record, cutoff, duplicateCutoff);
 
         const lastChoiceAt = record.recentChoices.get(choice);
         if (lastChoiceAt !== undefined && lastChoiceAt > duplicateCutoff) {
@@ -99,17 +94,25 @@ export class VoteSpamGuard {
         const cutoff = now - this.config.windowMs;
         const duplicateCutoff = now - this.config.duplicateWindowMs;
         for (const [key, record] of this.records) {
-            record.timestamps = record.timestamps.filter(t => t > cutoff);
-            for (const [value, timestamp] of record.recentChoices) {
-                if (timestamp <= duplicateCutoff) {
-                    record.recentChoices.delete(value);
-                }
-            }
+            this.cleanupRecord(record, cutoff, duplicateCutoff);
             if (
                 record.timestamps.length === 0 &&
                 record.recentChoices.size === 0
             ) {
                 this.records.delete(key);
+            }
+        }
+    }
+
+    private cleanupRecord(
+        record: VoteRecord,
+        cutoff: number,
+        duplicateCutoff: number,
+    ): void {
+        record.timestamps = record.timestamps.filter(timestamp => timestamp > cutoff);
+        for (const [value, timestamp] of record.recentChoices) {
+            if (timestamp <= duplicateCutoff) {
+                record.recentChoices.delete(value);
             }
         }
     }

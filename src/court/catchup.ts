@@ -1,5 +1,7 @@
 import type { CourtPhase, CourtTurn } from '../types.js';
 
+export const DEFAULT_CASE_SO_FAR_MAX_CHARS = 220;
+
 export interface CatchupView {
     caseSoFar: string;
     phaseLabel: string;
@@ -19,7 +21,7 @@ function normalize(text: string, maxChars: number): string {
 export function buildCaseSoFarSummary(
     turns: CourtTurn[],
     recapTurnIds: Iterable<string> | undefined,
-    maxChars = 220,
+    maxChars = DEFAULT_CASE_SO_FAR_MAX_CHARS,
 ): string {
     const recapSet = new Set(recapTurnIds ?? []);
     const latestRecap = [...turns]

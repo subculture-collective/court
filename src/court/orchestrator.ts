@@ -10,13 +10,11 @@ import {
 import {
     applyWitnessCap,
     estimateTokens,
-    effectiveTokenLimit,
     resolveWitnessCapConfig,
 } from './witness-caps.js';
 import type { WitnessCapConfig } from './witness-caps.js';
 import {
     applyRoleTokenBudget,
-    estimateCostUsd,
     resolveRoleTokenBudgetConfig,
     type RoleTokenBudgetConfig,
 } from './token-budget.js';
@@ -30,6 +28,21 @@ import type {
 } from '../types.js';
 import type { CourtSessionStore } from '../store/session-store.js';
 import { buildCourtSystemPrompt } from './personas.js';
+import {
+    createSafelySpeak,
+    createTokenSampleRecorder,
+    resolveRecapCadence,
+    runCasePromptPhase,
+    runClosingsPhase,
+    runFinalRulingPhase,
+    runOpeningsPhase,
+    runSentenceVotePhase,
+    runVerdictVotePhase,
+    runWitnessExamPhase,
+    type GenerateBudgetedTurn,
+    type TokenSample,
+    type SessionRuntimeContext,
+} from './phases/session-flow.js';
 
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -45,18 +58,101 @@ function recentHistory(turns: CourtTurn[], limit = 8): string {
         .join('\n');
 }
 
-function bestOf(votes: Record<string, number>, fallback: string): string {
-    const entries = Object.entries(votes);
-    if (entries.length === 0) return fallback;
-
-    const sorted = [...entries].sort((a, b) => b[1] - a[1]);
-    return sorted[0]?.[0] ?? fallback;
-}
-
 const MODERATION_REDIRECT_DIALOGUE =
     'The court will strike that from the record. Please keep testimony appropriate and on topic.';
 
 const broadcastBySession = new Map<string, BroadcastAdapter>();
+
+type BudgetResolution = {
+    requestedMaxTokens: number;
+    appliedMaxTokens: number;
+    roleMaxTokens: number;
+    source: 'env_role_cap' | 'requested';
+};
+
+function resolveBudgetResolution(input: {
+    role: CourtRole;
+    maxTokens?: number;
+    roleBudgetConfig?: RoleTokenBudgetConfig;
+}): BudgetResolution {
+    if (input.roleBudgetConfig) {
+        return applyRoleTokenBudget(
+            input.role,
+            input.maxTokens,
+            input.roleBudgetConfig,
+        );
+    }
+
+    const fallbackMaxTokens = input.maxTokens ?? 260;
+    return {
+        requestedMaxTokens: fallbackMaxTokens,
+        appliedMaxTokens: fallbackMaxTokens,
+        roleMaxTokens: fallbackMaxTokens,
+        source: 'requested',
+    };
+}
+
+function appendTurnToSession(session: CourtSession, turn: CourtTurn): void {
+    session.turns.push(turn);
+    session.turnCount += 1;
+}
+
+async function handleFlaggedModeration(input: {
+    store: CourtSessionStore;
+    session: CourtSession;
+    speaker: AgentId;
+    moderationReasons: string[];
+    activeBroadcast?: BroadcastAdapter;
+}): Promise<void> {
+    // eslint-disable-next-line no-console
+    console.warn(
+        `[moderation] content flagged session=${input.session.id} speaker=${input.speaker} reasons=${input.moderationReasons.join(',')}`,
+    );
+
+    const currentCount = input.session.metadata.objectionCount || 0;
+    const newCount = currentCount + 1;
+    input.session.metadata.objectionCount = newCount;
+
+    input.store.emitEvent(input.session.id, 'objection_count_changed', {
+        count: newCount,
+        phase: input.session.phase,
+        changedAt: new Date().toISOString(),
+    });
+
+    if (input.activeBroadcast) {
+        const activeBroadcast = input.activeBroadcast;
+        await safeBroadcastHook(
+            'moderation_alert',
+            () =>
+                activeBroadcast.triggerModerationAlert({
+                    reason: input.moderationReasons[0] ?? 'unknown',
+                    phase: input.session.phase,
+                    sessionId: input.session.id,
+                }),
+            (type, payload) =>
+                input.store.emitEvent(input.session.id, type, {
+                    phase: input.session.phase,
+                    ...payload,
+                }),
+        );
+    }
+}
+
+async function addJudgeModerationRedirect(input: {
+    store: CourtSessionStore;
+    session: CourtSession;
+}): Promise<void> {
+    const judgeId = input.session.metadata.roleAssignments.judge;
+    const judgeTurn = await input.store.addTurn({
+        sessionId: input.session.id,
+        speaker: judgeId,
+        role: 'judge',
+        phase: input.session.phase,
+        dialogue: MODERATION_REDIRECT_DIALOGUE,
+    });
+
+    appendTurnToSession(input.session, judgeTurn);
+}
 
 async function generateTurn(input: {
     store: CourtSessionStore;
@@ -89,15 +185,11 @@ async function generateTurn(input: {
         genre: session.metadata.currentGenre, // Phase 3: Pass genre for prompt variations
     });
 
-    const budgetResolution =
-        input.roleBudgetConfig ?
-            applyRoleTokenBudget(input.role, input.maxTokens, input.roleBudgetConfig)
-        :   {
-                requestedMaxTokens: input.maxTokens ?? 260,
-                appliedMaxTokens: input.maxTokens ?? 260,
-                roleMaxTokens: input.maxTokens ?? 260,
-                source: 'requested' as const,
-            };
+    const budgetResolution = resolveBudgetResolution({
+        role: input.role,
+        maxTokens: input.maxTokens,
+        roleBudgetConfig: input.roleBudgetConfig,
+    });
 
     const raw = await llmGenerate({
         messages: [
@@ -120,43 +212,16 @@ async function generateTurn(input: {
     }
 
     const moderation = moderateContent(dialogue);
-    const activeBroadcast =
-        input.broadcast ?? broadcastBySession.get(session.id);
+    const activeBroadcast = input.broadcast ?? broadcastBySession.get(session.id);
 
     if (moderation.flagged) {
-        // eslint-disable-next-line no-console
-        console.warn(
-            `[moderation] content flagged session=${session.id} speaker=${speaker} reasons=${moderation.reasons.join(',')}`,
-        );
-
-        // Phase 3: Increment objection count on moderation
-        const currentCount = session.metadata.objectionCount || 0;
-        const newCount = currentCount + 1;
-        session.metadata.objectionCount = newCount;
-
-        // Emit objection count changed event
-        store.emitEvent(session.id, 'objection_count_changed', {
-            count: newCount,
-            phase: session.phase,
-            changedAt: new Date().toISOString(),
+        await handleFlaggedModeration({
+            store,
+            session,
+            speaker,
+            moderationReasons: moderation.reasons,
+            activeBroadcast,
         });
-
-        if (activeBroadcast) {
-            await safeBroadcastHook(
-                'moderation_alert',
-                () =>
-                    activeBroadcast.triggerModerationAlert({
-                        reason: moderation.reasons[0] ?? 'unknown',
-                        phase: session.phase,
-                        sessionId: session.id,
-                    }),
-                (type, payload) =>
-                    store.emitEvent(session.id, type, {
-                        phase: session.phase,
-                        ...payload,
-                    }),
-            );
-        }
     }
 
     const turn = await input.store.addTurn({
@@ -171,9 +236,7 @@ async function generateTurn(input: {
             :   undefined,
     });
 
-    // Keep local session state in sync with the store so recentHistory() sees this turn.
-    session.turns.push(turn);
-    session.turnCount += 1;
+    appendTurnToSession(session, turn);
 
     store.emitEvent(session.id, 'token_budget_applied', {
         turnId: turn.id,
@@ -196,18 +259,10 @@ async function generateTurn(input: {
     });
 
     if (moderation.flagged && role !== 'judge') {
-        const judgeId = session.metadata.roleAssignments.judge;
-        const judgeTurn = await store.addTurn({
-            sessionId: session.id,
-            speaker: judgeId,
-            role: 'judge',
-            phase: session.phase,
-            dialogue: MODERATION_REDIRECT_DIALOGUE,
+        await addJudgeModerationRedirect({
+            store,
+            session,
         });
-
-        // Also reflect the judge redirect in local session state.
-        session.turns.push(judgeTurn);
-        session.turnCount += 1;
     }
 
     if (capResult?.capped && !moderation.flagged) {
@@ -235,6 +290,20 @@ export interface RunCourtSessionOptions {
     sleepFn?: (ms: number) => Promise<void>;
 }
 
+type GenerateTurnInput = Parameters<typeof generateTurn>[0];
+
+function createGenerateBudgetedTurn(input: {
+    roleTokenBudgetConfig: RoleTokenBudgetConfig;
+    onTokenSample: (sample: TokenSample) => void;
+}): GenerateBudgetedTurn {
+    return turnInput =>
+        generateTurn({
+            ...turnInput,
+            roleBudgetConfig: input.roleTokenBudgetConfig,
+            onTokenSample: input.onTokenSample,
+        });
+}
+
 export async function runCourtSession(
     sessionId: string,
     store: CourtSessionStore,
@@ -247,246 +316,42 @@ export async function runCourtSession(
     const pause = options.sleepFn ?? sleep;
     const witnessCapConfig = resolveWitnessCapConfig();
     const roleTokenBudgetConfig = resolveRoleTokenBudgetConfig();
-    const recapCadenceRaw = Number.parseInt(
-        process.env.JUDGE_RECAP_CADENCE ?? '2',
-        10,
-    );
-    const recapCadence =
-        Number.isFinite(recapCadenceRaw) && recapCadenceRaw > 0 ?
-            recapCadenceRaw
-        :   2;
+    const recapCadence = resolveRecapCadence();
     const ttsMetrics = {
         success: 0,
         failure: 0,
     };
-    const tokenEstimate = {
-        promptTokens: 0,
-        completionTokens: 0,
-    };
+    const onTokenSample = createTokenSampleRecorder({
+        store,
+        sessionId: session.id,
+        roleTokenBudgetConfig,
+    });
+    const generateBudgetedTurn = createGenerateBudgetedTurn({
+        roleTokenBudgetConfig,
+        onTokenSample,
+    });
+    const safelySpeak = createSafelySpeak({
+        tts,
+        sessionId: session.id,
+        ttsMetrics,
+    });
 
-    const recordTokenSample = (sample: {
-        turnId: string;
-        role: CourtRole;
-        phase: CourtPhase;
-        promptTokens: number;
-        completionTokens: number;
-    }): void => {
-        tokenEstimate.promptTokens += sample.promptTokens;
-        tokenEstimate.completionTokens += sample.completionTokens;
-        const cumulativeEstimatedTokens =
-            tokenEstimate.promptTokens + tokenEstimate.completionTokens;
-
-        store.emitEvent(session.id, 'session_token_estimate', {
-            turnId: sample.turnId,
-            role: sample.role,
-            phase: sample.phase,
-            estimatedPromptTokens: tokenEstimate.promptTokens,
-            estimatedCompletionTokens: tokenEstimate.completionTokens,
-            cumulativeEstimatedTokens,
-            costPer1kTokensUsd: roleTokenBudgetConfig.costPer1kTokensUsd,
-            estimatedCostUsd: estimateCostUsd(
-                cumulativeEstimatedTokens,
-                roleTokenBudgetConfig.costPer1kTokensUsd,
-            ),
-        });
-    };
-
-    const generateBudgetedTurn = (input: {
-        store: CourtSessionStore;
-        session: CourtSession;
-        speaker: AgentId;
-        role: CourtRole;
-        userInstruction: string;
-        maxTokens?: number;
-        capConfig?: WitnessCapConfig;
-        dialoguePrefix?: string;
-        broadcast?: BroadcastAdapter;
-    }) =>
-        generateTurn({
-            ...input,
-            roleBudgetConfig: roleTokenBudgetConfig,
-            onTokenSample: recordTokenSample,
-        });
-
-    const safelySpeak = async (
-        action: 'speakCue' | 'speakVerdict' | 'speakRecap',
-        invoke: () => Promise<void>,
-    ): Promise<void> => {
-        const started = Date.now();
-        try {
-            await invoke();
-            ttsMetrics.success += 1;
-            // eslint-disable-next-line no-console
-            console.info(
-                `[tts] status=success action=${action} provider=${tts.provider} session=${session.id} latencyMs=${Date.now() - started}`,
-            );
-        } catch (error) {
-            ttsMetrics.failure += 1;
-            const message =
-                error instanceof Error ? error.message : 'unknown tts error';
-            // eslint-disable-next-line no-console
-            console.warn(
-                `[tts] status=failure action=${action} provider=${tts.provider} session=${session.id} latencyMs=${Date.now() - started} reason=${message}`,
-            );
-        }
+    const context: SessionRuntimeContext = {
+        store,
+        session,
+        tts,
+        broadcast,
+        pause,
+        safelySpeak,
+        generateBudgetedTurn,
+        witnessCapConfig,
+        recapCadence,
     };
 
     try {
-        const { judge, prosecutor, defense, witnesses, bailiff } =
-            session.metadata.roleAssignments;
-
-        session.phase = 'case_prompt';
-        await store.setPhase(session.id, 'case_prompt', 8_000);
-
-        // Phase 3: Trigger broadcast hooks
-        await safeBroadcastHook(
-            'phase_stinger',
-            () =>
-                broadcast.triggerPhaseStinger({
-                    phase: 'case_prompt',
-                    sessionId: session.id,
-                }),
-            (type, payload) =>
-                store.emitEvent(session.id, type, {
-                    phase: 'case_prompt',
-                    ...payload,
-                }),
-        );
-
-        const allRiseCue = `All rise. The JuryRigged court is now in session. Case: ${session.topic}`;
-        await safelySpeak('speakCue', () =>
-            tts.speakCue({
-                sessionId: session.id,
-                phase: 'case_prompt',
-                text: allRiseCue,
-            }),
-        );
-        await store.addTurn({
-            sessionId: session.id,
-            speaker: bailiff,
-            role: 'bailiff',
-            phase: 'case_prompt',
-            dialogue: allRiseCue,
-        });
-        await pause(1_200);
-
-        session.phase = 'openings';
-        await store.setPhase(session.id, 'openings', 30_000);
-        await safelySpeak('speakCue', () =>
-            tts.speakCue({
-                sessionId: session.id,
-                phase: 'openings',
-                text: 'Opening statements begin now. Prosecution may proceed.',
-            }),
-        );
-        await generateBudgetedTurn({
-            store,
-            session,
-            speaker: prosecutor,
-            role: 'prosecutor',
-            userInstruction:
-                'Deliver your opening statement and explain why the court should lean toward conviction/liability.',
-        });
-        await pause(900);
-        await generateBudgetedTurn({
-            store,
-            session,
-            speaker: defense,
-            role: 'defense',
-            userInstruction:
-                'Deliver your opening statement and establish reasonable doubt / non-liability.',
-        });
-
-        session.phase = 'witness_exam';
-        await store.setPhase(session.id, 'witness_exam', 40_000);
-        await safelySpeak('speakCue', () =>
-            tts.speakCue({
-                sessionId: session.id,
-                phase: 'witness_exam',
-                text: 'Witness examination begins. The court will hear testimony.',
-            }),
-        );
-        await pause(600);
-
-        const activeWitnesses = witnesses.slice(
-            0,
-            Math.max(1, witnesses.length),
-        );
-        let exchangeCount = 0;
-
-        for (const [index, witness] of activeWitnesses.entries()) {
-            await generateBudgetedTurn({
-                store,
-                session,
-                speaker: judge,
-                role: 'judge',
-                userInstruction: `Ask witness ${index + 1} a focused question about the core accusation.`,
-            });
-            await pause(600);
-
-            await generateBudgetedTurn({
-                store,
-                session,
-                speaker: witness,
-                role: `witness_${Math.min(index + 1, 3)}` as CourtRole,
-                userInstruction:
-                    'Provide testimony in 1-3 sentences with one concrete detail and one comedic detail.',
-                maxTokens: Math.min(
-                    260,
-                    effectiveTokenLimit(witnessCapConfig).limit ?? 260,
-                ),
-                capConfig: witnessCapConfig,
-            });
-            await pause(600);
-
-            await generateBudgetedTurn({
-                store,
-                session,
-                speaker: prosecutor,
-                role: 'prosecutor',
-                userInstruction:
-                    'Cross-examine this witness with one pointed challenge.',
-            });
-            await pause(600);
-
-            await generateBudgetedTurn({
-                store,
-                session,
-                speaker: defense,
-                role: 'defense',
-                userInstruction:
-                    'Respond to the cross-exam and protect witness credibility in one short rebuttal.',
-            });
-
-            exchangeCount += 1;
-            if (exchangeCount % recapCadence === 0) {
-                await pause(600);
-                const recapTurn = await generateBudgetedTurn({
-                    store,
-                    session,
-                    speaker: judge,
-                    role: 'judge',
-                    userInstruction:
-                        'Give a two-sentence recap of what matters so far and keep the jury oriented.',
-                    dialoguePrefix: 'Recap:',
-                });
-                await store.recordRecap({
-                    sessionId: session.id,
-                    turnId: recapTurn.id,
-                    phase: session.phase,
-                    cycleNumber: exchangeCount,
-                });
-                await safelySpeak('speakRecap', () =>
-                    tts.speakRecap({
-                        sessionId: session.id,
-                        phase: 'witness_exam',
-                        text: recapTurn.dialogue,
-                    }),
-                );
-            }
-
-            await pause(800);
-        }
+        await runCasePromptPhase(context);
+        await runOpeningsPhase(context);
+        await runWitnessExamPhase(context);
 
         // Phase 3: Evidence reveal phase (currently skipped, placeholder for future implementation)
         // TODO: Implement evidence_reveal phase logic
@@ -509,160 +374,12 @@ export async function runCourtSession(
         // });
         // await pause(800);
 
-        session.phase = 'closings';
-        await store.setPhase(session.id, 'closings', 30_000);
-        await safelySpeak('speakCue', () =>
-            tts.speakCue({
-                sessionId: session.id,
-                phase: 'closings',
-                text: 'Closing arguments begin now.',
-            }),
-        );
-        await generateBudgetedTurn({
-            store,
-            session,
-            speaker: prosecutor,
-            role: 'prosecutor',
-            userInstruction:
-                'Deliver closing argument in 2-4 sentences with one memorable line.',
-        });
-        await pause(800);
-        await generateBudgetedTurn({
-            store,
-            session,
-            speaker: defense,
-            role: 'defense',
-            userInstruction:
-                'Deliver closing argument in 2-4 sentences and request acquittal/non-liability.',
-        });
+        await runClosingsPhase(context);
 
         const verdictChoices = verdictOptions(session.metadata.caseType);
-
-        session.phase = 'verdict_vote';
-        await store.setPhase(
-            session.id,
-            'verdict_vote',
-            session.metadata.verdictVoteWindowMs,
-        );
-
-        // Phase 3: Trigger broadcast hooks for verdict voting
-        await safeBroadcastHook(
-            'scene_switch',
-            () =>
-                broadcast.triggerSceneSwitch({
-                    sceneName: 'verdict_vote',
-                    phase: 'verdict_vote',
-                    sessionId: session.id,
-                }),
-            (type, payload) =>
-                store.emitEvent(session.id, type, {
-                    phase: 'verdict_vote',
-                    ...payload,
-                }),
-        );
-
-        await store.addTurn({
-            sessionId: session.id,
-            speaker: bailiff,
-            role: 'bailiff',
-            phase: 'verdict_vote',
-            dialogue: `Jury poll is open: ${verdictChoices.join(' / ')}. Cast your votes now.`,
-        });
-        await safelySpeak('speakCue', () =>
-            tts.speakCue({
-                sessionId: session.id,
-                phase: 'verdict_vote',
-                text: `Verdict poll is now open: ${verdictChoices.join(' or ')}.`,
-            }),
-        );
-        await pause(session.metadata.verdictVoteWindowMs);
-
-        session.phase = 'sentence_vote';
-        await store.setPhase(
-            session.id,
-            'sentence_vote',
-            session.metadata.sentenceVoteWindowMs,
-        );
-
-        // Phase 3: Trigger broadcast hooks for sentence voting
-        await safeBroadcastHook(
-            'scene_switch',
-            () =>
-                broadcast.triggerSceneSwitch({
-                    sceneName: 'sentence_vote',
-                    phase: 'sentence_vote',
-                    sessionId: session.id,
-                }),
-            (type, payload) =>
-                store.emitEvent(session.id, type, {
-                    phase: 'sentence_vote',
-                    ...payload,
-                }),
-        );
-        await store.addTurn({
-            sessionId: session.id,
-            speaker: bailiff,
-            role: 'bailiff',
-            phase: 'sentence_vote',
-            dialogue: `Sentence poll is now open. Options: ${session.metadata.sentenceOptions.join(' | ')}`,
-        });
-        await safelySpeak('speakCue', () =>
-            tts.speakCue({
-                sessionId: session.id,
-                phase: 'sentence_vote',
-                text: 'Sentence poll is now open. The jury may vote.',
-            }),
-        );
-        await pause(session.metadata.sentenceVoteWindowMs);
-
-        session.phase = 'final_ruling';
-        await store.setPhase(session.id, 'final_ruling', 20_000);
-        await safelySpeak('speakCue', () =>
-            tts.speakCue({
-                sessionId: session.id,
-                phase: 'final_ruling',
-                text: 'All rise for the final ruling.',
-            }),
-        );
-
-        const latest = await store.getSession(session.id);
-        if (!latest) {
-            throw new Error(
-                `Session not found during final ruling: ${session.id}`,
-            );
-        }
-
-        const winningVerdict = bestOf(
-            latest.metadata.verdictVotes,
-            verdictChoices[0],
-        );
-        const winningSentence = bestOf(
-            latest.metadata.sentenceVotes,
-            latest.metadata.sentenceOptions[0],
-        );
-        await store.recordFinalRuling({
-            sessionId: session.id,
-            verdict: winningVerdict,
-            sentence: winningSentence,
-        });
-
-        await safelySpeak('speakVerdict', () =>
-            tts.speakVerdict({
-                sessionId: session.id,
-                verdict: winningVerdict,
-                sentence: winningSentence,
-            }),
-        );
-
-        await generateBudgetedTurn({
-            store,
-            session,
-            speaker: judge,
-            role: 'judge',
-            userInstruction: `Deliver the final ruling with dramatic comedic flair. Winning verdict: ${winningVerdict}. Winning sentence: ${winningSentence}. Mention both explicitly.`,
-        });
-
-        await store.completeSession(session.id);
+        await runVerdictVotePhase(context, verdictChoices);
+        await runSentenceVotePhase(context);
+        await runFinalRulingPhase(context, verdictChoices);
     } catch (error) {
         const message =
             error instanceof Error ?

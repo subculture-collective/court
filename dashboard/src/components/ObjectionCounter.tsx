@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+const ANIMATION_RESET_MS = 400;
+
 export interface ObjectionCounterProps {
     count: number;
 }
@@ -12,7 +14,10 @@ export function ObjectionCounter({ count }: ObjectionCounterProps) {
         if (count !== prevCount) {
             setAnimating(true);
             setPrevCount(count);
-            const timer = setTimeout(() => setAnimating(false), 400);
+            const timer = setTimeout(
+                () => setAnimating(false),
+                ANIMATION_RESET_MS,
+            );
             return () => clearTimeout(timer);
         }
     }, [count, prevCount]);

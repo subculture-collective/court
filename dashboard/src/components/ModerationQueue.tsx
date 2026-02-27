@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { CourtEvent } from '../types';
 
 interface ModerationQueueProps {
@@ -40,6 +40,58 @@ export function ModerationQueue({ events }: ModerationQueueProps) {
             ),
         );
     };
+
+    useEffect(() => {
+        setQueue(prev => {
+            const known = new Set(prev.map(item => item.id));
+            const additions: FlaggedItem[] = [];
+
+            for (const event of events) {
+                if (known.has(event.id)) {
+                    continue;
+                }
+
+                const payload = event.payload as Record<string, unknown>;
+
+                if (event.type === 'moderation_action') {
+                    const reasons = Array.isArray(payload.reasons) ? payload.reasons : [];
+                    additions.push({
+                        id: event.id,
+                        type: 'statement',
+                        content:
+                            'Content was flagged and redacted by courtroom moderation.',
+                        speaker:
+                            typeof payload.speaker === 'string' ? payload.speaker : undefined,
+                        timestamp: event.at,
+                        reason:
+                            reasons.length > 0 ?
+                                reasons.map(String).join(', ')
+                            :   'policy_violation',
+                        status: 'pending',
+                    });
+                    known.add(event.id);
+                }
+
+                if (event.type === 'vote_spam_blocked') {
+                    const reason =
+                        typeof payload.reason === 'string' ?
+                            payload.reason
+                        :   'vote_spam';
+                    additions.push({
+                        id: event.id,
+                        type: 'vote',
+                        content: 'Vote submission blocked by anti-spam guard.',
+                        timestamp: event.at,
+                        reason,
+                        status: 'pending',
+                    });
+                    known.add(event.id);
+                }
+            }
+
+            return additions.length > 0 ? [...prev, ...additions] : prev;
+        });
+    }, [events]);
 
     const filteredQueue = queue.filter(
         item => filter === 'all' || item.status === filter,

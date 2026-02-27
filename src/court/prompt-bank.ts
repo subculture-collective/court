@@ -141,12 +141,60 @@ export const DEFAULT_ROTATION_CONFIG = {
     maxHistorySize: 10,
 };
 
+const NO_ACTIVE_PROMPTS_ERROR =
+    'No active prompts available in the prompt bank. Check PROMPT_BANK and activeGenres filter.';
+
 function stableHash(input: string): number {
     let hash = 0;
     for (let i = 0; i < input.length; i += 1) {
         hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
     }
     return hash;
+}
+
+function getActivePromptCandidates(activeGenres?: GenreTag[]): PromptBankEntry[] {
+    let candidates = PROMPT_BANK.filter(prompt => prompt.active);
+
+    if (activeGenres && activeGenres.length > 0) {
+        candidates = candidates.filter(prompt =>
+            activeGenres.includes(prompt.genre),
+        );
+    }
+
+    if (candidates.length === 0) {
+        throw new Error(NO_ACTIVE_PROMPTS_ERROR);
+    }
+
+    return candidates;
+}
+
+function selectWithGenreRotation(input: {
+    candidates: PromptBankEntry[];
+    genreHistory: GenreTag[];
+    minDistance: number;
+    depletedPoolWarning: string;
+}): PromptBankEntry {
+    const recentGenres = new Set(
+        input.genreHistory.slice(-input.minDistance).filter(Boolean),
+    );
+
+    let availablePrompts = input.candidates.filter(
+        prompt => !recentGenres.has(prompt.genre),
+    );
+
+    if (availablePrompts.length === 0) {
+        console.warn(input.depletedPoolWarning);
+        availablePrompts = input.candidates;
+    }
+
+    const sortedPrompts = [...availablePrompts].sort((a, b) =>
+        a.id.localeCompare(b.id),
+    );
+    const seed = stableHash(
+        `${input.genreHistory.join('|')}|${sortedPrompts.map(prompt => prompt.id).join('|')}`,
+    );
+
+    return sortedPrompts[seed % sortedPrompts.length];
 }
 
 /**
@@ -163,52 +211,21 @@ function stableHash(input: string): number {
  * @param activeGenres - Optional filter to restrict to specific genres
  * @param minDistance - Minimum sessions before genre can repeat (default: 2)
  * @returns Selected prompt entry
+ * @deprecated Prefer selectNextSafePrompt for runtime usage.
  */
 export function selectNextPrompt(
     genreHistory: GenreTag[] = [],
     activeGenres?: GenreTag[],
     minDistance: number = DEFAULT_ROTATION_CONFIG.minDistance,
 ): PromptBankEntry {
-    // Filter to active prompts only
-    let candidates = PROMPT_BANK.filter(p => p.active);
+    const candidates = getActivePromptCandidates(activeGenres);
 
-    // Apply genre filter if specified
-    if (activeGenres && activeGenres.length > 0) {
-        candidates = candidates.filter(p => activeGenres.includes(p.genre));
-    }
-
-    if (candidates.length === 0) {
-        throw new Error(
-            'No active prompts available in the prompt bank. Check PROMPT_BANK and activeGenres filter.',
-        );
-    }
-
-    // Identify recently used genres (within minDistance window)
-    const recentGenres = new Set(
-        genreHistory.slice(-minDistance).filter(Boolean),
-    );
-
-    // Filter out prompts with recently used genres
-    let availablePrompts = candidates.filter(p => !recentGenres.has(p.genre));
-
-    // Depleted pool fallback: if all genres are recent, allow any candidate
-    if (availablePrompts.length === 0) {
-        console.warn(
-            `[prompt-bank] All genres recently used (history=${genreHistory.join(',')}). Allowing any genre.`,
-        );
-        availablePrompts = candidates;
-    }
-
-    // Deterministic selection based on history and available prompt IDs
-    const sortedPrompts = [...availablePrompts].sort((a, b) =>
-        a.id.localeCompare(b.id),
-    );
-    const seed = stableHash(
-        `${genreHistory.join('|')}|${sortedPrompts.map(p => p.id).join('|')}`,
-    );
-    const selected = sortedPrompts[seed % sortedPrompts.length];
-
-    return selected;
+    return selectWithGenreRotation({
+        candidates,
+        genreHistory,
+        minDistance,
+        depletedPoolWarning: `[prompt-bank] All genres recently used (history=${genreHistory.join(',')}). Allowing any genre.`,
+    });
 }
 
 export interface PromptSafetyResult {
@@ -239,17 +256,7 @@ export function selectNextSafePrompt(
     activeGenres?: GenreTag[],
     minDistance: number = DEFAULT_ROTATION_CONFIG.minDistance,
 ): PromptBankEntry {
-    let candidates = PROMPT_BANK.filter(p => p.active);
-
-    if (activeGenres && activeGenres.length > 0) {
-        candidates = candidates.filter(p => activeGenres.includes(p.genre));
-    }
-
-    if (candidates.length === 0) {
-        throw new Error(
-            'No active prompts available in the prompt bank. Check PROMPT_BANK and activeGenres filter.',
-        );
-    }
+    const candidates = getActivePromptCandidates(activeGenres);
 
     const safeCandidates = candidates.filter(
         candidate => screenPromptForSession(candidate).allowed,
@@ -259,30 +266,12 @@ export function selectNextSafePrompt(
         throw new Error('No safe prompts available in the prompt bank.');
     }
 
-    const recentGenres = new Set(
-        genreHistory.slice(-minDistance).filter(Boolean),
-    );
-
-    let availablePrompts = safeCandidates.filter(
-        p => !recentGenres.has(p.genre),
-    );
-
-    if (availablePrompts.length === 0) {
-        console.warn(
-            `[prompt-bank] All safe genres recently used (history=${genreHistory.join(',')}). Allowing any safe genre.`,
-        );
-        availablePrompts = safeCandidates;
-    }
-
-    const sortedPrompts = [...availablePrompts].sort((a, b) =>
-        a.id.localeCompare(b.id),
-    );
-    const seed = stableHash(
-        `${genreHistory.join('|')}|${sortedPrompts.map(p => p.id).join('|')}`,
-    );
-    const selected = sortedPrompts[seed % sortedPrompts.length];
-
-    return selected;
+    return selectWithGenreRotation({
+        candidates: safeCandidates,
+        genreHistory,
+        minDistance,
+        depletedPoolWarning: `[prompt-bank] All safe genres recently used (history=${genreHistory.join(',')}). Allowing any safe genre.`,
+    });
 }
 
 /**

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+const SESSION_RELOAD_DELAY_MS = 1500;
+
 interface ManualControlsProps {
     sessionId: string | null;
 }
@@ -11,10 +13,7 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
         text: string;
     } | null>(null);
 
-    const handleAction = async (
-        action: string,
-        data?: Record<string, unknown>,
-    ) => {
+    const handleAdvancePhase = async (targetPhase: string) => {
         if (!sessionId) {
             setMessage({ type: 'error', text: 'No active session' });
             return;
@@ -24,20 +23,10 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
         setMessage(null);
 
         try {
-            let url: string;
-            let body: Record<string, unknown> = data || {};
-
-            if (action === 'advance-phase') {
-                url = `/api/court/sessions/${sessionId}/phase`;
-                body = { phase: data?.targetPhase };
-            } else {
-                url = `/api/court/sessions/${sessionId}/${action}`;
-            }
-
-            const response = await fetch(url, {
+            const response = await fetch(`/api/court/sessions/${sessionId}/phase`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify({ phase: targetPhase }),
             });
 
             if (!response.ok) {
@@ -46,7 +35,7 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
 
             setMessage({
                 type: 'success',
-                text: `${action} completed successfully`,
+                text: `Phase advanced to ${targetPhase}`,
             });
         } catch (err) {
             setMessage({ type: 'error', text: (err as Error).message });
@@ -73,14 +62,17 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
             }
 
             const data = await response.json();
-            const sessionId = data.session?.id ?? data.sessionId;
+            const createdSessionId = data.session?.id ?? data.sessionId;
             setMessage({
                 type: 'success',
-                text: `New session created: ${sessionId}`,
+                text: `New session created: ${createdSessionId}`,
             });
 
             // Reload page to connect to new session
-            setTimeout(() => window.location.reload(), 1500);
+            setTimeout(
+                () => window.location.reload(),
+                SESSION_RELOAD_DELAY_MS,
+            );
         } catch (err) {
             setMessage({ type: 'error', text: (err as Error).message });
         } finally {
@@ -116,17 +108,6 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
                     >
                         {loading ? 'Processing...' : '🆕 Create New Session'}
                     </button>
-                    {sessionId && (
-                        <button
-                            onClick={() => handleAction('reset')}
-                            disabled={loading}
-                            className='w-full px-4 py-3 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors'
-                        >
-                            {loading ?
-                                'Processing...'
-                            :   '🔄 Reset Current Session'}
-                        </button>
-                    )}
                 </div>
             </div>
 
@@ -161,11 +142,7 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
                         ].map(({ phase, label, emoji }) => (
                             <button
                                 key={phase}
-                                onClick={() =>
-                                    handleAction('advance-phase', {
-                                        targetPhase: phase,
-                                    })
-                                }
+                                onClick={() => handleAdvancePhase(phase)}
                                 disabled={loading}
                                 className='px-4 py-3 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors text-left'
                             >
@@ -177,99 +154,13 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
                 </div>
             )}
 
-            {/* Statement Injection */}
-            {sessionId && (
-                <div className='bg-gray-800 rounded-lg p-6 shadow-lg'>
-                    <h2 className='text-xl font-semibold mb-4 text-primary-400'>
-                        Inject Statement
-                    </h2>
-                    <form
-                        onSubmit={e => {
-                            e.preventDefault();
-                            const formData = new FormData(e.currentTarget);
-                            const speaker = formData.get('speaker') as string;
-                            const content = formData.get('content') as string;
-                            handleAction('inject-statement', {
-                                speaker,
-                                content,
-                            });
-                            e.currentTarget.reset();
-                        }}
-                    >
-                        <div className='space-y-3'>
-                            <div>
-                                <label
-                                    htmlFor='speaker'
-                                    className='block text-sm font-medium text-gray-300 mb-1'
-                                >
-                                    Speaker
-                                </label>
-                                <select
-                                    id='speaker'
-                                    name='speaker'
-                                    required
-                                    className='w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500'
-                                >
-                                    <option value='JUDGE'>Judge</option>
-                                    <option value='WITNESS_1'>Witness 1</option>
-                                    <option value='WITNESS_2'>Witness 2</option>
-                                    <option value='NARRATOR'>Narrator</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label
-                                    htmlFor='content'
-                                    className='block text-sm font-medium text-gray-300 mb-1'
-                                >
-                                    Content
-                                </label>
-                                <textarea
-                                    id='content'
-                                    name='content'
-                                    required
-                                    rows={3}
-                                    className='w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500'
-                                    placeholder='Enter statement content...'
-                                />
-                            </div>
-                            <button
-                                type='submit'
-                                disabled={loading}
-                                className='w-full px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors'
-                            >
-                                {loading ?
-                                    'Injecting...'
-                                :   '💉 Inject Statement'}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
-
-            {/* Emergency Controls */}
-            {sessionId && (
-                <div className='bg-gray-800 rounded-lg p-6 shadow-lg border-2 border-red-700'>
-                    <h2 className='text-xl font-semibold mb-4 text-red-400'>
-                        ⚠️ Emergency Controls
-                    </h2>
-                    <div className='space-y-3'>
-                        <button
-                            onClick={() => handleAction('pause')}
-                            disabled={loading}
-                            className='w-full px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors'
-                        >
-                            {loading ? 'Processing...' : '⏸️ Pause Session'}
-                        </button>
-                        <button
-                            onClick={() => handleAction('terminate')}
-                            disabled={loading}
-                            className='w-full px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors'
-                        >
-                            {loading ? 'Processing...' : '🛑 Terminate Session'}
-                        </button>
-                    </div>
-                </div>
-            )}
+            <div className='bg-gray-800 rounded-lg p-6 shadow-lg'>
+                <p className='text-sm text-gray-400'>
+                    Operator controls currently support creating sessions and
+                    phase overrides. Additional moderation and emergency APIs
+                    can be added server-side later.
+                </p>
+            </div>
         </div>
     );
 }

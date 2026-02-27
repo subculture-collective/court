@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL: `http://localhost:${PORT}` (default `PORT=3001`)
+Base URL: `http://localhost:${PORT}` (default `PORT=3000`)
 
 All request and response bodies are JSON unless noted.
 Error responses include `{ "code": "<ERROR_CODE>", "error": "<message>" }` plus optional metadata such as `reasons`, `reason`, or `retryAfterMs`.
@@ -288,8 +288,8 @@ Every SSE payload is a `CourtEvent`:
 | ------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `snapshot`                | Immediately on SSE connect                                          | `session`, `turns`, `verdictVotes`, `sentenceVotes`, `recapTurnIds`         |
 | `session_created`         | Session record inserted                                             | `sessionId`                                                                 |
-| `session_started`         | Orchestration begins                                                | `sessionId`                                                                 |
-| `phase_changed`           | Phase advances                                                      | `phase`, `durationMs`                                                       |
+| `session_started`         | Orchestration begins                                                | `sessionId`, `startedAt`                                                    |
+| `phase_changed`           | Phase advances                                                      | `phase`, `phaseStartedAt`, `phaseDurationMs`                               |
 | `turn`                    | A new dialogue turn is stored                                       | `turn: CourtTurn`                                                           |
 | `vote_updated`            | A vote is successfully cast                                         | `voteType`, `choice`, `verdictVotes`, `sentenceVotes`                       |
 | `vote_closed`             | Transitioned away from a vote phase; includes frozen tally snapshot | `pollType`, `closedAt`, `votes`, `nextPhase`                                |
@@ -297,8 +297,8 @@ Every SSE payload is a `CourtEvent`:
 | `judge_recap_emitted`     | Judge recap emitted during witness exam                             | `turnId`, `phase`, `cycleNumber`                                            |
 | `token_budget_applied`    | Per-role token budget applied to generated turn                     | `turnId`, `speaker`, `role`, `phase`, `requestedMaxTokens`, `appliedMaxTokens`, `roleMaxTokens`, `source` |
 | `session_token_estimate`  | Cumulative session token/cost estimate updated                      | `turnId`, `role`, `phase`, `estimatedPromptTokens`, `estimatedCompletionTokens`, `cumulativeEstimatedTokens`, `costPer1kTokensUsd`, `estimatedCostUsd` |
-| `analytics_event`         | Poll open/close lifecycle events                                    | `event`, `phase`                                                            |
-| `moderation_action`       | Turn content was flagged and redacted                               | `speaker`, `reasons`                                                        |
+| `analytics_event`         | Poll open/close lifecycle events                                    | `name`, `pollType`, `phase?`, `choice?`                                    |
+| `moderation_action`       | Turn content was flagged and redacted                               | `turnId`, `speaker`, `reasons`, `phase`                                    |
 | `vote_spam_blocked`       | Vote rejected due to rate limiting or duplicate detection           | `ip`, `voteType`, `reason`, `retryAfterMs`                                  |
-| `session_completed`       | Session reached `final_ruling` successfully                         | `sessionId`, `finalRuling`                                                  |
+| `session_completed`       | Session reached `final_ruling` successfully                         | `sessionId`, `completedAt`                                                  |
 | `session_failed`          | Orchestration threw an unrecoverable error                          | `sessionId`, `reason`                                                       |
