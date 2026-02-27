@@ -30,6 +30,10 @@ const phaseTimerFill = document.getElementById('phaseTimerFill');
 const activeSpeakerEl = document.getElementById('activeSpeaker');
 const captionLineEl = document.getElementById('captionLine');
 const connectionBanner = document.getElementById('connectionBanner');
+const catchupToggleBtn = document.getElementById('catchupToggle');
+const catchupBody = document.getElementById('catchupBody');
+const catchupSummaryEl = document.getElementById('catchupSummary');
+const catchupMetaEl = document.getElementById('catchupMeta');
 
 let activeSession = null;
 let source = null;
@@ -57,6 +61,13 @@ const voteState = {
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 10_000;
 
+const catchupState = {
+    visible: true,
+    toggles: 0,
+    shown: 0,
+    hidden: 0,
+};
+
 function setStatus(message, type = 'ok') {
     statusEl.textContent = message;
     statusEl.className = type === 'error' ? 'danger' : 'ok';
@@ -83,6 +94,87 @@ function pulseActiveSpeaker() {
     activeSpeakerEl.classList.remove('speaker-live');
     void activeSpeakerEl.offsetWidth;
     activeSpeakerEl.classList.add('speaker-live');
+}
+
+function juryStepLabel(phase) {
+    switch (phase) {
+        case 'case_prompt':
+            return 'Jury pending — court intro in progress';
+        case 'openings':
+            return 'Jury listening — opening statements';
+        case 'witness_exam':
+            return 'Jury observing witness examination';
+        case 'evidence_reveal':
+            return 'Jury reviewing evidence reveal';
+        case 'closings':
+            return 'Jury preparing for verdict vote';
+        case 'verdict_vote':
+            return 'Jury voting — verdict poll is live';
+        case 'sentence_vote':
+            return 'Jury voting — sentence poll is live';
+        case 'final_ruling':
+            return 'Jury complete — ruling delivered';
+        default:
+            return 'Jury status unavailable';
+    }
+}
+
+function summarizeCaseSoFar(turns) {
+    const orderedTurns = Array.isArray(turns) ? turns : [];
+    const latestRecap = [...orderedTurns]
+        .reverse()
+        .find(turn => isRecapTurn(streamState, turn.id));
+
+    const toCompact = text => text.replace(/\s+/g, ' ').trim();
+    const clip = text => {
+        const compact = toCompact(text);
+        if (compact.length <= 220) return compact;
+        return `${compact.slice(0, 219).trimEnd()}…`;
+    };
+
+    if (latestRecap?.dialogue) {
+        return clip(latestRecap.dialogue);
+    }
+
+    const recent = orderedTurns.slice(-3);
+    if (recent.length === 0) {
+        return 'The court has just opened. Waiting for opening statements.';
+    }
+
+    return clip(recent.map(turn => `${turn.speaker}: ${turn.dialogue}`).join(' · '));
+}
+
+function updateCatchupPanel(session) {
+    const phase = session?.phase ?? 'idle';
+    const turns = session?.turns ?? [];
+    catchupSummaryEl.textContent = summarizeCaseSoFar(turns);
+    catchupMetaEl.textContent = `phase: ${phase} · ${juryStepLabel(phase)}`;
+}
+
+function recordCatchupToggleTelemetry(visible, reason) {
+    catchupState.toggles += 1;
+    if (visible) {
+        catchupState.shown += 1;
+    } else {
+        catchupState.hidden += 1;
+    }
+
+    // Aggregate-only telemetry: no user/session identifiers.
+    // eslint-disable-next-line no-console
+    console.info(
+        `[telemetry] catchup_panel_visibility reason=${reason} toggles=${catchupState.toggles} shown=${catchupState.shown} hidden=${catchupState.hidden} phase=${activeSession?.phase ?? 'idle'}`,
+    );
+}
+
+function setCatchupVisible(visible, reason = 'manual') {
+    catchupState.visible = Boolean(visible);
+    catchupBody.classList.toggle('hidden', !catchupState.visible);
+    catchupToggleBtn.textContent = catchupState.visible ? 'Hide' : 'Show';
+    catchupToggleBtn.setAttribute(
+        'aria-expanded',
+        String(catchupState.visible),
+    );
+    recordCatchupToggleTelemetry(catchupState.visible, reason);
 }
 
 function appendTurn(turn, { recap = false } = {}) {
@@ -409,12 +501,14 @@ function connectStream(sessionId, isReconnect = false) {
             const { session, turns, verdictVotes, sentenceVotes } =
                 payload.payload;
             activeSession = session;
+            activeSession.turns = turns;
             phaseBadge.textContent = `phase: ${session.phase}`;
             sessionMeta.textContent = `${session.id} · ${session.status}`;
             updateTimer(
                 session.metadata.phaseStartedAt,
                 session.metadata.phaseDurationMs,
             );
+            updateCatchupPanel(activeSession);
 
             feed.innerHTML = '';
             resetStreamState(streamState, payload.payload);
@@ -454,15 +548,21 @@ function connectStream(sessionId, isReconnect = false) {
             if (!shouldAppendTurn(streamState, turn)) {
                 return;
             }
+            if (activeSession) {
+                activeSession.turns = activeSession.turns || [];
+                activeSession.turns.push(turn);
+            }
             appendTurn(turn, {
                 recap: isRecapTurn(streamState, turn.id),
             });
+            updateCatchupPanel(activeSession);
             return;
         }
 
         if (payload.type === 'judge_recap_emitted') {
             markRecap(streamState, payload.payload.turnId);
             markTurnRecap(payload.payload.turnId);
+            updateCatchupPanel(activeSession);
             return;
         }
 
@@ -480,6 +580,7 @@ function connectStream(sessionId, isReconnect = false) {
                 payload.payload.phaseStartedAt,
                 payload.payload.phaseDurationMs,
             );
+            updateCatchupPanel(activeSession);
             if (payload.payload.phase === 'verdict_vote') {
                 openVoteWindow(
                     'verdict',
@@ -579,6 +680,7 @@ startBtn.onclick = async () => {
         }
 
         activeSession = data.session;
+        activeSession.turns = data.session.turns || [];
         sessionMeta.textContent = `${activeSession.id} · ${activeSession.status}`;
         phaseBadge.textContent = `phase: ${activeSession.phase}`;
         feed.innerHTML = '';
@@ -589,9 +691,14 @@ startBtn.onclick = async () => {
             activeSession.metadata.phaseStartedAt,
             activeSession.metadata.phaseDurationMs,
         );
+        updateCatchupPanel(activeSession);
         connectStream(activeSession.id);
         setStatus('Session started. Court is now in session.');
     } finally {
         setStartLoading(false);
     }
+};
+
+catchupToggleBtn.onclick = () => {
+    setCatchupVisible(!catchupState.visible);
 };
