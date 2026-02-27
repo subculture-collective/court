@@ -1,5 +1,6 @@
 import { AGENTS } from '../agents.js';
 import { llmGenerate, sanitizeDialogue } from '../llm/client.js';
+import { moderateContent } from '../moderation/content-filter.js';
 import type {
     AgentId,
     CaseType,
@@ -50,7 +51,7 @@ async function generateTurn(input: {
         history: recentHistory(session.turns),
     });
 
-    const dialogue = await llmGenerate({
+    const raw = await llmGenerate({
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userInstruction },
@@ -59,12 +60,25 @@ async function generateTurn(input: {
         maxTokens: 260,
     });
 
+    const sanitized = sanitizeDialogue(raw);
+    const moderation = moderateContent(sanitized);
+
+    if (moderation.flagged) {
+        // eslint-disable-next-line no-console
+        console.warn(
+            `[moderation] content flagged session=${session.id} speaker=${speaker} reasons=${moderation.reasons.join(',')}`,
+        );
+    }
+
     await input.store.addTurn({
         sessionId: session.id,
         speaker,
         role,
         phase: session.phase,
-        dialogue: sanitizeDialogue(dialogue),
+        dialogue: moderation.sanitized,
+        moderationResult: moderation.flagged ?
+            { flagged: true, reasons: moderation.reasons }
+        :   undefined,
     });
 }
 
@@ -250,6 +264,11 @@ export async function runCourtSession(
             latest.metadata.sentenceVotes,
             latest.metadata.sentenceOptions[0],
         );
+        await store.recordFinalRuling({
+            sessionId: session.id,
+            verdict: winningVerdict,
+            sentence: winningSentence,
+        });
 
         await generateTurn({
             store,

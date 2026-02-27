@@ -5,7 +5,9 @@
     "type": "module",
     "scripts": {
         "dev": "tsx watch src/server.ts",
+        "lint": "tsc --noEmit",
         "build": "tsc -p tsconfig.json",
+        "test": "node --import tsx --test src/*.test.ts src/**/*.test.ts",
         "start": "node dist/server.js",
         "migrate": "tsx src/scripts/migrate.ts",
         "migrate:dist": "node dist/scripts/migrate.js",

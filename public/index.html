@@ -115,6 +115,31 @@
                 margin-bottom: 12px;
             }
 
+            .overlay-shell {
+                margin-bottom: 12px;
+                border: 1px solid #2b2f41;
+                border-radius: 12px;
+                padding: 10px;
+                background: #121624;
+                display: grid;
+                gap: 8px;
+            }
+
+            .overlay-row {
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            #captionLine {
+                font-size: 14px;
+                color: var(--text);
+                border-left: 3px solid #3b4160;
+                padding-left: 8px;
+            }
+
             #feed {
                 max-height: 60vh;
                 overflow: auto;
@@ -144,10 +169,23 @@
             }
 
             .vote-row {
-                display: flex;
-                justify-content: space-between;
+                display: grid;
+                gap: 4px;
                 font-size: 13px;
                 color: var(--muted);
+            }
+
+            .vote-bar {
+                width: 100%;
+                height: 8px;
+                border-radius: 999px;
+                background: #2b2f41;
+                overflow: hidden;
+            }
+
+            .vote-bar-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #698eff, #88b4ff);
             }
 
             .vote-actions {
@@ -211,6 +249,17 @@
                         </div>
                     </div>
                     <span class="badge" id="phaseBadge">phase: idle</span>
+                </div>
+                <div class="overlay-shell">
+                    <div class="overlay-row">
+                        <span>⏱️ Phase timer</span>
+                        <span id="phaseTimer">--:--</span>
+                    </div>
+                    <div class="overlay-row">
+                        <span>🎙️ Active speaker</span>
+                        <span id="activeSpeaker">Waiting for first turn…</span>
+                    </div>
+                    <div id="captionLine">Captions will appear here.</div>
                 </div>
 
                 <div id="feed"></div>

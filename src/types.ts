@@ -67,6 +67,11 @@ export interface CourtSessionMetadata {
     sentenceVoteWindowMs: number;
     verdictVotes: Record<string, number>;
     sentenceVotes: Record<string, number>;
+    finalRuling?: {
+        verdict: string;
+        sentence: string;
+        decidedAt: string;
+    };
     roleAssignments: CourtRoleAssignments;
 }
 
@@ -85,12 +90,29 @@ export interface CourtSession {
     failureReason?: string;
 }
 
+export type ModerationReasonCode =
+    | 'hate_speech'
+    | 'violence'
+    | 'harassment'
+    | 'sexual_content'
+    | 'slur';
+
+export interface ModerationResult {
+    flagged: boolean;
+    reasons: ModerationReasonCode[];
+    original: string;
+    sanitized: string;
+}
+
 export type CourtEventType =
     | 'session_created'
     | 'session_started'
     | 'phase_changed'
     | 'turn'
     | 'vote_updated'
+    | 'analytics_event'
+    | 'moderation_action'
+    | 'vote_spam_blocked'
     | 'session_completed'
     | 'session_failed';
 

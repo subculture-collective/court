@@ -1,7 +1,20 @@
 # Improv Court POC (standalone)
 
+[![CI](https://github.com/subculture-collective/court/actions/workflows/ci.yml/badge.svg)](https://github.com/subculture-collective/court/actions/workflows/ci.yml)
+
 This is a **standalone root-level implementation** of the Improv Court proof of concept.
 It does **not** depend on `subcult-corp` at runtime.
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [docs/ADR-001-improv-court-architecture.md](docs/ADR-001-improv-court-architecture.md) | Architecture Decision Record: runtime boundaries, data contracts, and phase invariants |
+| [docs/architecture.md](docs/architecture.md) | System architecture, agent roles, and phase flow |
+| [docs/api.md](docs/api.md) | REST API endpoints, schemas, and SSE event contracts |
+| [docs/operator-runbook.md](docs/operator-runbook.md) | Setup, configuration, deployment, and monitoring |
+| [docs/moderation-playbook.md](docs/moderation-playbook.md) | Content moderation system and incident procedures |
+| [docs/event-taxonomy.md](docs/event-taxonomy.md) | Canonical event taxonomy, payload schemas, and logging guidelines |
 
 ## What is implemented
 
@@ -16,7 +29,11 @@ It does **not** depend on `subcult-corp` at runtime.
     - `final_ruling`
 - Live SSE stream per session
 - Jury verdict and sentence voting endpoints
+- Deterministic phase-order and vote-window enforcement
 - Minimal stripped web UI (`public/index.html`)
+  - Overlay shell with phase timer, active speaker, and live captions
+  - Verdict/sentence poll bars with live percentages and phase-gated voting
+  - SSE analytics events for poll start/close and vote completion
 
 ## Environment
 
@@ -77,6 +94,10 @@ If port `3001` is already in use on your machine, set `API_HOST_PORT` in `.env` 
 
 If you need host access to Postgres, add a `ports` mapping to the `db` service in `docker-compose.yml` (for example `"5433:5432"` to avoid conflicts with local Postgres).
 
+## Operations runbook (staging)
+
+See `docs/ops-runbook.md` for the repeatable staging deploy path, core SLI dashboard definitions, alert thresholds, and incident drill/recovery steps.
+
 ## API
 
 - `GET /api/health`
@@ -86,6 +107,16 @@ If you need host access to Postgres, add a `ports` mapping to the `db` service i
 - `POST /api/court/sessions/:id/vote`
 - `POST /api/court/sessions/:id/phase`
 - `GET /api/court/sessions/:id/stream` (SSE)
+
+## Local CI parity
+
+Run the same checks as CI locally before pushing:
+
+```sh
+npm run lint   # type-check (tsc --noEmit)
+npm run build  # compile TypeScript to dist/
+npm test       # run all tests
+```
 
 ## Notes
 

@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { AGENT_IDS, isValidAgent } from './agents.js';
 import { assignCourtRoles } from './court/roles.js';
 import { runCourtSession } from './court/orchestrator.js';
-import { createCourtSessionStore } from './store/session-store.js';
+import {
+    CourtNotFoundError,
+    CourtValidationError,
+    createCourtSessionStore,
+} from './store/session-store.js';
+import { VoteSpamGuard } from './moderation/vote-spam.js';
 import type { AgentId, CaseType, CourtPhase } from './types.js';
 
 const validPhases: CourtPhase[] = [
@@ -35,6 +40,11 @@ async function bootstrap(): Promise<void> {
         process.env.SENTENCE_VOTE_WINDOW_MS ?? '20000',
         10,
     );
+
+    const voteSpamGuard = new VoteSpamGuard();
+    const PRUNE_INTERVAL_MS = 60_000;
+    const pruneTimer = setInterval(() => voteSpamGuard.prune(), PRUNE_INTERVAL_MS);
+    pruneTimer.unref();
 
     app.use(express.json());
     app.use(express.static(publicDir));
@@ -148,6 +158,21 @@ async function bootstrap(): Promise<void> {
             return res.status(400).json({ error: 'choice is required' });
         }
 
+        const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+        if (!voteSpamGuard.check(req.params.id, clientIp)) {
+            // eslint-disable-next-line no-console
+            console.warn(
+                `[vote-spam] blocked ip=${clientIp} session=${req.params.id}`,
+            );
+            store.emitEvent(req.params.id, 'vote_spam_blocked', {
+                ip: clientIp,
+                voteType,
+            });
+            return res
+                .status(429)
+                .json({ error: 'Too many votes. Please slow down.' });
+        }
+
         try {
             const session = await store.castVote({
                 sessionId: req.params.id,
@@ -163,7 +188,11 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to cast vote';
-            return res.status(404).json({ error: message });
+            const status =
+                error instanceof CourtValidationError ? 400
+                : error instanceof CourtNotFoundError ? 404
+                : 500;
+            return res.status(status).json({ error: message });
         }
     });
 
@@ -188,7 +217,11 @@ async function bootstrap(): Promise<void> {
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Failed to set phase';
-            return res.status(404).json({ error: message });
+            const status =
+                error instanceof CourtValidationError ? 400
+                : error instanceof CourtNotFoundError ? 404
+                : 500;
+            return res.status(status).json({ error: message });
         }
     });
 
