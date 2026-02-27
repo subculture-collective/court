@@ -14,6 +14,7 @@ It does **not** depend on `subcult-corp` at runtime.
 | [docs/api.md](docs/api.md) | REST API endpoints, schemas, and SSE event contracts |
 | [docs/operator-runbook.md](docs/operator-runbook.md) | Setup, configuration, deployment, and monitoring |
 | [docs/moderation-playbook.md](docs/moderation-playbook.md) | Content moderation system and incident procedures |
+| [docs/event-taxonomy.md](docs/event-taxonomy.md) | Canonical event taxonomy, payload schemas, and logging guidelines |
 
 ## What is implemented
 
