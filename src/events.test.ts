@@ -94,6 +94,33 @@ test('assertEventPayload: vote_closed valid', () => {
     );
 });
 
+test('assertEventPayload: witness_response_capped valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('witness_response_capped', {
+                turnId: 'turn-1',
+                speaker: 'chora',
+                phase: 'witness_exam',
+                originalLength: 180,
+                truncatedLength: 120,
+                reason: 'tokens',
+            }),
+        ),
+    );
+});
+
+test('assertEventPayload: judge_recap_emitted valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('judge_recap_emitted', {
+                turnId: 'turn-2',
+                phase: 'witness_exam',
+                cycleNumber: 2,
+            }),
+        ),
+    );
+});
+
 test('assertEventPayload: analytics_event poll_started valid', () => {
     assert.doesNotThrow(() =>
         assertEventPayload(
@@ -246,6 +273,35 @@ test('assertEventPayload: vote_closed missing votes', () => {
                     pollType: 'verdict',
                     closedAt: new Date().toISOString(),
                     nextPhase: 'sentence_vote',
+                }),
+            ),
+        TypeError,
+    );
+});
+
+test('assertEventPayload: witness_response_capped missing turnId', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('witness_response_capped', {
+                    speaker: 'chora',
+                    phase: 'witness_exam',
+                    originalLength: 180,
+                    truncatedLength: 120,
+                    reason: 'tokens',
+                }),
+            ),
+        TypeError,
+    );
+});
+
+test('assertEventPayload: judge_recap_emitted missing cycleNumber', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('judge_recap_emitted', {
+                    turnId: 'turn-2',
+                    phase: 'witness_exam',
                 }),
             ),
         TypeError,

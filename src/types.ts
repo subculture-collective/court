@@ -77,6 +77,7 @@ export interface CourtSessionMetadata {
             votes: Record<string, number>;
         };
     };
+    recapTurnIds?: string[];
     finalRuling?: {
         verdict: string;
         sentence: string;
@@ -121,6 +122,8 @@ export type CourtEventType =
     | 'turn'
     | 'vote_updated'
     | 'vote_closed'
+    | 'witness_response_capped'
+    | 'judge_recap_emitted'
     | 'analytics_event'
     | 'moderation_action'
     | 'vote_spam_blocked'

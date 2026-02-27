@@ -118,6 +118,12 @@ export interface CourtSessionStore {
         verdict: string;
         sentence: string;
     }): Promise<CourtSession>;
+    recordRecap(input: {
+        sessionId: string;
+        turnId: string;
+        phase: CourtPhase;
+        cycleNumber: number;
+    }): Promise<void>;
     completeSession(sessionId: string): Promise<CourtSession>;
     failSession(sessionId: string, reason: string): Promise<CourtSession>;
     recoverInterruptedSessions(): Promise<string[]>;
@@ -400,6 +406,29 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             decidedAt: new Date().toISOString(),
         };
         return deepCopy(session);
+    }
+
+    async recordRecap(input: {
+        sessionId: string;
+        turnId: string;
+        phase: CourtPhase;
+        cycleNumber: number;
+    }): Promise<void> {
+        const session = this.mustGet(input.sessionId);
+        session.metadata.recapTurnIds ??= [];
+        if (!session.metadata.recapTurnIds.includes(input.turnId)) {
+            session.metadata.recapTurnIds.push(input.turnId);
+        }
+
+        this.publish({
+            sessionId: input.sessionId,
+            type: 'judge_recap_emitted',
+            payload: {
+                turnId: input.turnId,
+                phase: input.phase,
+                cycleNumber: input.cycleNumber,
+            },
+        });
     }
 
     async completeSession(sessionId: string): Promise<CourtSession> {
@@ -958,6 +987,55 @@ class PostgresCourtSessionStore implements CourtSessionStore {
 
         const turns = await this.fetchTurns(input.sessionId);
         return this.mapSession(row, turns);
+    }
+
+    async recordRecap(input: {
+        sessionId: string;
+        turnId: string;
+        phase: CourtPhase;
+        cycleNumber: number;
+    }): Promise<void> {
+        const row = await this.db.begin(async (tx: any) => {
+            const [current] = await tx<SessionRow[]>`
+                SELECT *
+                FROM court_sessions
+                WHERE id = ${input.sessionId}
+                FOR UPDATE
+            `;
+
+            if (!current) {
+                throw new CourtNotFoundError(
+                    `Session not found: ${input.sessionId}`,
+                );
+            }
+
+            const metadata = {
+                ...(current.metadata ?? {}),
+            } as CourtSessionMetadata;
+            metadata.recapTurnIds ??= [];
+            if (!metadata.recapTurnIds.includes(input.turnId)) {
+                metadata.recapTurnIds.push(input.turnId);
+            }
+
+            const [updated] = await tx<SessionRow[]>`
+                UPDATE court_sessions
+                SET metadata = ${tx.json(metadata as unknown as Record<string, unknown>)}
+                WHERE id = ${input.sessionId}
+                RETURNING *
+            `;
+
+            return updated;
+        });
+
+        this.publish({
+            sessionId: input.sessionId,
+            type: 'judge_recap_emitted',
+            payload: {
+                turnId: input.turnId,
+                phase: input.phase,
+                cycleNumber: input.cycleNumber,
+            },
+        });
     }
 
     async completeSession(sessionId: string): Promise<CourtSession> {

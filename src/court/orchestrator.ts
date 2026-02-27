@@ -2,6 +2,8 @@ import { AGENTS } from '../agents.js';
 import { llmGenerate, sanitizeDialogue } from '../llm/client.js';
 import { moderateContent } from '../moderation/content-filter.js';
 import { createTTSAdapterFromEnv, type TTSAdapter } from '../tts/adapter.js';
+import { applyWitnessCap, resolveWitnessCapConfig } from './witness-caps.js';
+import type { WitnessCapConfig } from './witness-caps.js';
 import type {
     AgentId,
     CaseType,
@@ -40,7 +42,10 @@ async function generateTurn(input: {
     speaker: AgentId;
     role: CourtRole;
     userInstruction: string;
-}): Promise<void> {
+    maxTokens?: number;
+    capConfig?: WitnessCapConfig;
+    dialoguePrefix?: string;
+}): Promise<CourtTurn> {
     const { store, session, speaker, role, userInstruction } = input;
 
     const systemPrompt = buildCourtSystemPrompt({
@@ -58,11 +63,21 @@ async function generateTurn(input: {
             { role: 'user', content: userInstruction },
         ],
         temperature: session.phase === 'witness_exam' ? 0.8 : 0.7,
-        maxTokens: 260,
+        maxTokens: input.maxTokens ?? 260,
     });
 
-    const sanitized = sanitizeDialogue(raw);
-    const moderation = moderateContent(sanitized);
+    let dialogue = sanitizeDialogue(raw);
+    const capResult =
+        input.capConfig ? applyWitnessCap(dialogue, input.capConfig) : null;
+    if (capResult?.capped) {
+        dialogue = capResult.text;
+    }
+
+    if (input.dialoguePrefix) {
+        dialogue = `${input.dialoguePrefix} ${dialogue}`.trim();
+    }
+
+    const moderation = moderateContent(dialogue);
 
     if (moderation.flagged) {
         // eslint-disable-next-line no-console
@@ -71,7 +86,7 @@ async function generateTurn(input: {
         );
     }
 
-    await input.store.addTurn({
+    const turn = await input.store.addTurn({
         sessionId: session.id,
         speaker,
         role,
@@ -82,6 +97,19 @@ async function generateTurn(input: {
                 { flagged: true, reasons: moderation.reasons }
             :   undefined,
     });
+
+    if (capResult?.capped && !moderation.flagged) {
+        store.emitEvent(session.id, 'witness_response_capped', {
+            turnId: turn.id,
+            speaker,
+            phase: session.phase,
+            originalLength: capResult.originalTokens,
+            truncatedLength: capResult.truncatedTokens,
+            reason: capResult.reason ?? 'tokens',
+        });
+    }
+
+    return turn;
 }
 
 function verdictOptions(caseType: CaseType): string[] {
@@ -103,6 +131,15 @@ export async function runCourtSession(
     const session = await store.startSession(sessionId);
     const tts = options.ttsAdapter ?? createTTSAdapterFromEnv();
     const pause = options.sleepFn ?? sleep;
+    const witnessCapConfig = resolveWitnessCapConfig();
+    const recapCadenceRaw = Number.parseInt(
+        process.env.JUDGE_RECAP_CADENCE ?? '2',
+        10,
+    );
+    const recapCadence =
+        Number.isFinite(recapCadenceRaw) && recapCadenceRaw > 0 ?
+            recapCadenceRaw
+        :   2;
     const ttsMetrics = {
         success: 0,
         failure: 0,
@@ -215,6 +252,8 @@ export async function runCourtSession(
                 role: `witness_${Math.min(index + 1, 3)}` as CourtRole,
                 userInstruction:
                     'Provide testimony in 1-3 sentences with one concrete detail and one comedic detail.',
+                maxTokens: Math.min(260, witnessCapConfig.maxTokens),
+                capConfig: witnessCapConfig,
             });
             await pause(600);
 
@@ -238,21 +277,28 @@ export async function runCourtSession(
             });
 
             exchangeCount += 1;
-            if (exchangeCount % 2 === 0) {
+            if (exchangeCount % recapCadence === 0) {
                 await pause(600);
-                await generateTurn({
+                const recapTurn = await generateTurn({
                     store,
                     session,
                     speaker: judge,
                     role: 'judge',
                     userInstruction:
                         'Give a two-sentence recap of what matters so far and keep the jury oriented.',
+                    dialoguePrefix: 'Recap:',
+                });
+                await store.recordRecap({
+                    sessionId: session.id,
+                    turnId: recapTurn.id,
+                    phase: session.phase,
+                    cycleNumber: exchangeCount,
                 });
                 await safelySpeak('speakRecap', () =>
                     tts.speakRecap({
                         sessionId: session.id,
                         phase: 'witness_exam',
-                        text: 'The court has issued a recap for the jury.',
+                        text: recapTurn.dialogue,
                     }),
                 );
             }

@@ -3,6 +3,7 @@ import type { LLMGenerateOptions } from '../types.js';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
 const DEFAULT_MODEL =
     process.env.LLM_MODEL ?? 'deepseek/deepseek-chat-v3-0324:free';
+const FORCE_MOCK = process.env.LLM_MOCK === 'true';
 
 function extractFromXml(text: string): string {
     const contentMatch = text.match(
@@ -60,7 +61,7 @@ export async function llmGenerate(
         .reverse()
         .find(message => message.role === 'user')?.content;
 
-    if (!OPENROUTER_API_KEY) {
+    if (!OPENROUTER_API_KEY || FORCE_MOCK) {
         return mockReply(latestUserMessage ?? '');
     }
 

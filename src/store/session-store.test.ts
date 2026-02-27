@@ -221,6 +221,45 @@ test('emits vote_closed and persists vote snapshots when vote phases end', async
     });
 });
 
+test('recordRecap stores recap turn ids and emits judge_recap_emitted', async () => {
+    const { store, sessionId } = await createRunningSession();
+    const recapEvents: CourtEvent[] = [];
+
+    const unsubscribe = store.subscribe(sessionId, event => {
+        if (event.type === 'judge_recap_emitted') {
+            recapEvents.push(event);
+        }
+    });
+
+    try {
+        await store.setPhase(sessionId, 'openings');
+        const recapTurn = await store.addTurn({
+            sessionId,
+            speaker: 'chora',
+            role: 'judge',
+            phase: 'openings',
+            dialogue: 'Recap: The witness spilled the soup.',
+        });
+
+        await store.recordRecap({
+            sessionId,
+            turnId: recapTurn.id,
+            phase: 'openings',
+            cycleNumber: 2,
+        });
+    } finally {
+        unsubscribe();
+    }
+
+    assert.equal(recapEvents.length, 1);
+    const session = await store.getSession(sessionId);
+    assert.deepEqual(session?.metadata.recapTurnIds, [
+        recapEvents[0]?.payload.turnId,
+    ]);
+    assert.equal(recapEvents[0]?.payload.phase, 'openings');
+    assert.equal(recapEvents[0]?.payload.cycleNumber, 2);
+});
+
 test(
     'postgres store persists final ruling when TEST_DATABASE_URL is provided',
     { skip: !process.env.TEST_DATABASE_URL },

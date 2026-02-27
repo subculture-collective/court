@@ -244,6 +244,45 @@ Emitted once when a vote phase closes (i.e., when transitioning away from
 
 ---
 
+### `witness_response_capped`
+
+Emitted when a witness response is truncated due to configured response caps.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    turnId: string;
+    speaker: AgentId;
+    phase: CourtPhase;
+    originalLength: number; // token estimate
+    truncatedLength: number; // token estimate after cap
+    reason: 'tokens' | 'seconds';
+}
+```
+
+---
+
+### `judge_recap_emitted`
+
+Emitted when the judge recap is generated during witness examination.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    turnId: string;
+    phase: CourtPhase;
+    cycleNumber: number; // witness cycle count when recap occurred
+}
+```
+
+---
+
 ### `analytics_event`
 
 Poll lifecycle signals. Three named sub-events are emitted under this type:
@@ -428,11 +467,11 @@ Emitted when the orchestrator throws an unrecoverable error.
 
 ## Severity levels
 
-| Severity | Event types                                                                                                                          |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `info`   | `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `analytics_event`, `session_completed` |
-| `warn`   | `moderation_action`, `vote_spam_blocked`                                                                                             |
-| `error`  | `session_failed`                                                                                                                     |
+| Severity | Event types                                                                                                                                                                            |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `info`   | `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `witness_response_capped`, `judge_recap_emitted`, `analytics_event`, `session_completed` |
+| `warn`   | `moderation_action`, `vote_spam_blocked`                                                                                                                                               |
+| `error`  | `session_failed`                                                                                                                                                                       |
 
 ---
 

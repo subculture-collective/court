@@ -53,6 +53,21 @@ export interface VoteClosedPayload {
     nextPhase: CourtPhase;
 }
 
+export interface WitnessResponseCappedPayload {
+    turnId: string;
+    speaker: string;
+    phase: CourtPhase;
+    originalLength: number;
+    truncatedLength: number;
+    reason: 'tokens' | 'seconds';
+}
+
+export interface JudgeRecapEmittedPayload {
+    turnId: string;
+    phase: CourtPhase;
+    cycleNumber: number;
+}
+
 export type AnalyticsEventName =
     | 'poll_started'
     | 'vote_completed'
@@ -170,6 +185,34 @@ export function assertEventPayload(event: CourtEvent): void {
             ) {
                 throw new TypeError(
                     `vote_closed payload missing required fields: pollType, closedAt, votes, nextPhase`,
+                );
+            }
+            break;
+
+        case 'witness_response_capped':
+            if (
+                !hasStringKeys(payload, [
+                    'turnId',
+                    'speaker',
+                    'phase',
+                    'reason',
+                ]) ||
+                typeof payload['originalLength'] !== 'number' ||
+                typeof payload['truncatedLength'] !== 'number'
+            ) {
+                throw new TypeError(
+                    `witness_response_capped payload missing required fields: turnId, speaker, phase, originalLength, truncatedLength, reason`,
+                );
+            }
+            break;
+
+        case 'judge_recap_emitted':
+            if (
+                !hasStringKeys(payload, ['turnId', 'phase']) ||
+                typeof payload['cycleNumber'] !== 'number'
+            ) {
+                throw new TypeError(
+                    `judge_recap_emitted payload missing required fields: turnId, phase, cycleNumber`,
                 );
             }
             break;
