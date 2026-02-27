@@ -16,11 +16,6 @@ It does **not** depend on `subcult-corp` at runtime.
 | [docs/moderation-playbook.md](docs/moderation-playbook.md)                             | Content moderation system and incident procedures                                      |
 | [docs/event-taxonomy.md](docs/event-taxonomy.md)                                       | Canonical event taxonomy, payload schemas, and logging guidelines                      |
 | [docs/phase5-6-implementation-plan.md](docs/phase5-6-implementation-plan.md)           | Dependency-ordered implementation plan for roadmap phases 5 and 6                      |
-| [docs/templates/retrospective-template.md](docs/templates/retrospective-template.md)   | Reusable incident retrospective template with a filled mock-incident draft             |
-| [docs/templates/technical-debt-queue.md](docs/templates/technical-debt-queue.md)       | Structured technical debt intake queue with P0-P3 + effort triage rubric              |
-| [ops/dashboards/runtime-health.dashboard.json](ops/dashboards/runtime-health.dashboard.json) | Runtime SLI dashboard definition (session completion, vote latency, moderation, stream/API health) |
-| [ops/alerts/thresholds.json](ops/alerts/thresholds.json)                               | Alert thresholds + runbook anchors for staging operations                              |
-| [ops/alerts/synthetic-scenarios.json](ops/alerts/synthetic-scenarios.json)             | Synthetic alert validation scenarios for operational drills                             |
 
 ## What is implemented
 
@@ -38,7 +33,7 @@ It does **not** depend on `subcult-corp` at runtime.
 - Deterministic phase-order and vote-window enforcement
 - Minimal stripped web UI (`public/index.html`)
     - Overlay shell with phase timer, active speaker, and live captions
-    - Viewer catch-up panel (“case so far” + current jury step) with toggle telemetry
+    - Viewer layout showing current phase context and jury voting status
     - Verdict/sentence poll bars with live percentages and phase-gated voting
     - SSE analytics events for poll start/close and vote completion
 - **Operator Dashboard** (`/operator`)
@@ -72,13 +67,6 @@ Key variables:
 - `WITNESS_TOKENS_PER_SECOND`
 - `WITNESS_TRUNCATION_MARKER`
 - `JUDGE_RECAP_CADENCE`
-- `ROLE_MAX_TOKENS_DEFAULT`
-- `ROLE_MAX_TOKENS_JUDGE`
-- `ROLE_MAX_TOKENS_PROSECUTOR`
-- `ROLE_MAX_TOKENS_DEFENSE`
-- `ROLE_MAX_TOKENS_WITNESS`
-- `ROLE_MAX_TOKENS_BAILIFF`
-- `TOKEN_COST_PER_1K_USD`
 - `LOG_LEVEL` (debug, info, warn, error; defaults to `info`)
 
 If `OPENROUTER_API_KEY` is empty, the app falls back to deterministic mock dialogue.
@@ -89,8 +77,6 @@ If `DATABASE_URL` is missing, the app falls back to in-memory storage (non-durab
 `TTS_PROVIDER=noop` keeps TTS silent (default). `TTS_PROVIDER=mock` records adapter calls for local/testing workflows without requiring an external speech provider.
 
 Witness response caps are controlled by `WITNESS_MAX_TOKENS` and `WITNESS_MAX_SECONDS`. The recap cadence uses `JUDGE_RECAP_CADENCE` (every N witness cycles). `WITNESS_TRUNCATION_MARKER` customizes the appended cutoff text.
-
-Per-role budget caps (`ROLE_MAX_TOKENS_*`) apply additional max-token limits for generated turns. `TOKEN_COST_PER_1K_USD` controls estimated session cost telemetry emitted in runtime events.
 
 ## Run
 
@@ -143,11 +129,7 @@ If you need host access to Postgres, add a `ports` mapping to the `db` service i
 
 See `docs/ops-runbook.md` for the repeatable staging deploy path, GitHub Actions
 workflow (`Staging Deploy`), core SLI dashboard definitions, alert thresholds,
-and incident drill/recovery steps.
-
-Ops configuration artifacts live under `ops/` and can be validated with:
-
-- `npm run test:ops`
+and incident drill/recovery steps. Ops-related configuration is validated as part of the standard test suite (see `npm test` under "Local CI parity" below).
 
 ## API
 
