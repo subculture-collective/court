@@ -126,6 +126,10 @@ function emitRenderDirective(
     turnId?: string,
 ): void {
     session.metadata.lastRenderDirective = directive;
+    store
+        .patchMetadata(session.id, { lastRenderDirective: directive })
+        // eslint-disable-next-line no-console
+        .catch(err => console.error('[orchestrator] patchMetadata render_directive failed', err));
     store.emitEvent(session.id, 'render_directive', {
         directive,
         turnId,
@@ -441,7 +445,10 @@ function buildCaseFile(session: CourtSession): CaseFile {
 
 function emitCaseFile(store: CourtSessionStore, session: CourtSession): void {
     const caseFile = buildCaseFile(session);
-    session.metadata.caseFile = caseFile;
+    store
+        .patchMetadata(session.id, { caseFile })
+        // eslint-disable-next-line no-console
+        .catch(err => console.error('[orchestrator] patchMetadata case_file failed', err));
     store.emitEvent(session.id, 'case_file_generated', {
         caseFile,
         sessionId: session.id,
@@ -467,10 +474,13 @@ function emitWitnessStatement(
         issuedAt: new Date().toISOString(),
     };
 
-    if (!session.metadata.witnessStatements) {
-        session.metadata.witnessStatements = [];
-    }
-    session.metadata.witnessStatements.push(statement);
+    const existing = session.metadata.witnessStatements ?? [];
+    const witnessStatements = [...existing, statement];
+    session.metadata.witnessStatements = witnessStatements;
+    store
+        .patchMetadata(session.id, { witnessStatements })
+        // eslint-disable-next-line no-console
+        .catch(err => console.error('[orchestrator] patchMetadata witness_statement failed', err));
 
     store.emitEvent(session.id, 'witness_statement', {
         statement,

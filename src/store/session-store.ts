@@ -140,6 +140,10 @@ export interface CourtSessionStore {
         type: CourtEvent['type'],
         payload: Record<string, unknown>,
     ): void;
+    patchMetadata(
+        sessionId: string,
+        patch: Partial<CourtSessionMetadata>,
+    ): Promise<void>;
 }
 
 class InMemoryCourtSessionStore implements CourtSessionStore {
@@ -515,6 +519,14 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
             throw new CourtNotFoundError(`Session not found: ${sessionId}`);
         }
         return session;
+    }
+
+    async patchMetadata(
+        sessionId: string,
+        patch: Partial<CourtSessionMetadata>,
+    ): Promise<void> {
+        const session = this.mustGet(sessionId);
+        Object.assign(session.metadata, patch);
     }
 
     private channel(sessionId: string): string {
@@ -1134,6 +1146,37 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         payload: Record<string, unknown>,
     ): void {
         this.publish({ sessionId, type, payload });
+    }
+
+    async patchMetadata(
+        sessionId: string,
+        patch: Partial<CourtSessionMetadata>,
+    ): Promise<void> {
+        await this.withTxQuery(async txQuery => {
+            const [current] = await txQuery<SessionRow[]>`
+                SELECT metadata
+                FROM court_sessions
+                WHERE id = ${sessionId}
+                FOR UPDATE
+            `;
+
+            if (!current) {
+                throw new CourtNotFoundError(
+                    `Session not found: ${sessionId}`,
+                );
+            }
+
+            const metadata = {
+                ...(current.metadata ?? {}),
+                ...patch,
+            } as CourtSessionMetadata;
+
+            await txQuery`
+                UPDATE court_sessions
+                SET metadata = ${txQuery.json(metadata as unknown as JSONValue)}
+                WHERE id = ${sessionId}
+            `;
+        });
     }
 
     private publish(input: {

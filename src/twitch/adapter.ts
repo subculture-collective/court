@@ -146,10 +146,13 @@ export async function wireTwitchToSession(
     adapter.onCommand(async cmd => {
         switch (cmd.command) {
             case 'objection': {
-                // Audience objection: read current count and increment
+                // Audience objection: read current count, increment, and persist
                 const session = await store.getSession(sessionId);
                 const currentCount = session?.metadata?.objectionCount ?? 0;
                 const newCount = currentCount + 1;
+                await store.patchMetadata(sessionId, {
+                    objectionCount: newCount,
+                });
                 store.emitEvent(sessionId, 'objection_count_changed', {
                     count: newCount,
                     phase: session?.phase ?? 'witness_exam',
