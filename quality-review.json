@@ -1,0 +1,66 @@
+{
+    "scope": "working-tree vs 467d7d9 (HEAD/main)",
+    "verdict": "Ready with fixes",
+    "tests": { "pass": 158, "fail": 0, "skipped": 2 },
+    "triage": {
+        "docsOnly": false,
+        "reactNextPerfReview": false,
+        "uiGuidelinesAudit": true
+    },
+    "issues": {
+        "critical": [
+            {
+                "id": "C1",
+                "title": "/press and /present endpoints have no rate limiting",
+                "location": "src/server.ts:703-731",
+                "impact": "Unauthenticated flood of render_directive events via rapid /press calls"
+            },
+            {
+                "id": "C2",
+                "title": "Twitch !objection emits count: -1 sentinel; nothing increments it",
+                "location": "src/twitch/adapter.ts:149-153",
+                "impact": "SSE listeners receive count=-1, corrupting overlay and dashboard UI state"
+            }
+        ],
+        "important": [
+            {
+                "id": "I1",
+                "title": "/api/metrics endpoint not documented; operator runbook contradicts",
+                "location": "docs/operator-runbook.md:213"
+            },
+            {
+                "id": "I2",
+                "title": "TWITCH_EVENTSUB_SECRET in .env.example is unused in code",
+                "location": ".env.example:42"
+            },
+            {
+                "id": "I3",
+                "title": "event-taxonomy.md render_directive payload shows flat pose/face vs actual map",
+                "location": "docs/event-taxonomy.md"
+            },
+            {
+                "id": "I4",
+                "title": "Dashboard App.tsx duplicates session-snapshot event mapping logic",
+                "location": "dashboard/src/App.tsx:10-160"
+            }
+        ],
+        "minor": [
+            {
+                "id": "M1",
+                "title": "inferRenderDirective only matches keywords with trailing !",
+                "location": "src/court/orchestrator.ts:100-115"
+            },
+            {
+                "id": "M2",
+                "title": "public/app.js growing large (~970 lines)",
+                "location": "public/app.js"
+            },
+            {
+                "id": "M3",
+                "title": "record:sse script flags not in docs/api.md",
+                "location": "README.md"
+            }
+        ]
+    },
+    "untested_new_modules": ["src/metrics.ts", "src/twitch/adapter.ts"]
+}

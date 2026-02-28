@@ -103,11 +103,22 @@ export async function llmGenerate(
         }
 
         const data = (await response.json()) as {
-            choices?: [{ message?: { content?: string } }];
+            choices?: [{ message?: { content?: unknown } }];
         };
 
-        const text = data.choices?.[0]?.message?.content ?? '';
-        return sanitizeDialogue(text);
+        const rawContent = data.choices?.[0]?.message?.content;
+        const text = typeof rawContent === 'string' ? rawContent : '';
+        const sanitized = sanitizeDialogue(text);
+
+        if (!sanitized) {
+            // eslint-disable-next-line no-console
+            console.warn(
+                `OpenRouter response returned empty content for model=${model}; falling back to mock dialogue.`,
+            );
+            return mockReply(latestUserMessage ?? '');
+        }
+
+        return sanitized;
     } catch (error) {
         // eslint-disable-next-line no-console
         console.warn(

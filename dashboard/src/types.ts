@@ -78,6 +78,7 @@ export interface SessionSnapshot {
 }
 
 export interface TranscriptEntry {
+    turnId?: string;
     speaker: string;
     content: string;
     timestamp: string;

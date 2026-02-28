@@ -5,6 +5,7 @@ import {
     resetStreamState,
     shouldAppendTurn,
 } from './stream-state.js';
+import { createCourtRenderer } from './renderer/index.js';
 
 const topicInput = document.getElementById('topic');
 const caseTypeSelect = document.getElementById('caseType');
@@ -29,6 +30,12 @@ const phaseTimer = document.getElementById('phaseTimer');
 const phaseTimerFill = document.getElementById('phaseTimerFill');
 const activeSpeakerEl = document.getElementById('activeSpeaker');
 const captionLineEl = document.getElementById('captionLine');
+const pixiStageHost = document.getElementById('pixiStage');
+const captionSkipBtn = document.getElementById('captionSkipBtn');
+const captionSkipAllToggle = document.getElementById('captionSkipAll');
+const captionTypewriterToggle = document.getElementById(
+    'captionTypewriterToggle',
+);
 const connectionBanner = document.getElementById('connectionBanner');
 const catchupToggleBtn = document.getElementById('catchupToggle');
 const catchupBody = document.getElementById('catchupBody');
@@ -41,6 +48,13 @@ let timerInterval = null;
 let voteCountdownInterval = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+/** @type {Awaited<ReturnType<typeof createCourtRenderer>> | null} */
+let courtRenderer = null;
+
+const runtimeSearchParams = new URLSearchParams(window.location.search);
+const fixtureReplayUrl = runtimeSearchParams.get('replayFixture');
+const isFixtureReplayMode =
+    typeof fixtureReplayUrl === 'string' && fixtureReplayUrl.length > 0;
 
 const streamState = createStreamState();
 const voteState = {
@@ -62,6 +76,24 @@ const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 10_000;
 const CATCHUP_MAX_CHARS = 220;
 const TIMER_TICK_MS = 250;
+const TYPEWRITER_CHARS_PER_SECOND = 48;
+
+const fixtureReplayState = {
+    active: false,
+    timers: [],
+};
+
+const dialogueTypewriterState = {
+    enabled: true,
+    skipAll: false,
+    skipRequested: false,
+    fullText: 'Captions will appear here.',
+    speakerLabel: 'Waiting for first turn…',
+    frameId: null,
+    lineToken: 0,
+};
+
+// pixiOverlayState replaced by courtRenderer — see renderer/index.js
 
 const catchupState = {
     visible: true,
@@ -96,6 +128,165 @@ function pulseActiveSpeaker() {
     activeSpeakerEl.classList.remove('speaker-live');
     void activeSpeakerEl.offsetWidth;
     activeSpeakerEl.classList.add('speaker-live');
+}
+
+function setCaptionText(text) {
+    captionLineEl.textContent = text;
+
+    if (courtRenderer?.ui?.dialogueText) {
+        courtRenderer.ui.dialogueText.text = text;
+    }
+}
+
+function setActiveSpeakerLabel(label, { pulse = false } = {}) {
+    activeSpeakerEl.textContent = label;
+
+    if (pulse) {
+        pulseActiveSpeaker();
+    }
+
+    if (courtRenderer?.ui?.speakerText) {
+        courtRenderer.ui.speakerText.text = label;
+    }
+}
+
+async function bootstrapCourtRenderer() {
+    if (!pixiStageHost) {
+        return;
+    }
+
+    courtRenderer = await createCourtRenderer(pixiStageHost);
+
+    if (courtRenderer) {
+        // Sync initial text state into the renderer overlay
+        courtRenderer.update({
+            phase: 'idle',
+            speakerLabel: activeSpeakerEl.textContent,
+            dialogueContent: captionLineEl.textContent,
+            nameplate: '',
+        });
+    }
+}
+
+function clearDialogueTypewriter() {
+    if (dialogueTypewriterState.frameId !== null) {
+        cancelAnimationFrame(dialogueTypewriterState.frameId);
+        dialogueTypewriterState.frameId = null;
+    }
+}
+
+function commitDialogueTypewriterLine() {
+    clearDialogueTypewriter();
+    dialogueTypewriterState.skipRequested = false;
+    setCaptionText(dialogueTypewriterState.fullText);
+}
+
+function skipDialogueTypewriter() {
+    if (dialogueTypewriterState.frameId === null) {
+        return;
+    }
+
+    dialogueTypewriterState.skipRequested = true;
+}
+
+function startDialogueTypewriter(turn) {
+    const dialogue = typeof turn.dialogue === 'string' ? turn.dialogue : '';
+    const role = typeof turn.role === 'string' ? turn.role : 'unknown role';
+    const speaker =
+        typeof turn.speaker === 'string' ? turn.speaker : 'unknown speaker';
+    const speakerLabel = `${role} · ${speaker}`;
+
+    dialogueTypewriterState.lineToken += 1;
+    const token = dialogueTypewriterState.lineToken;
+
+    dialogueTypewriterState.speakerLabel = speakerLabel;
+    dialogueTypewriterState.fullText = dialogue;
+    dialogueTypewriterState.skipRequested = false;
+
+    clearDialogueTypewriter();
+    setActiveSpeakerLabel(speakerLabel, { pulse: true });
+
+    if (
+        dialogueTypewriterState.skipAll ||
+        !dialogueTypewriterState.enabled ||
+        dialogue.length <= 1
+    ) {
+        setCaptionText(dialogue);
+        return;
+    }
+
+    const startedAt = performance.now();
+    const tick = timestamp => {
+        if (token !== dialogueTypewriterState.lineToken) {
+            return;
+        }
+
+        if (
+            dialogueTypewriterState.skipRequested ||
+            dialogueTypewriterState.skipAll
+        ) {
+            commitDialogueTypewriterLine();
+            return;
+        }
+
+        const elapsedMs = Math.max(0, timestamp - startedAt);
+        const characters = Math.min(
+            dialogue.length,
+            Math.max(
+                1,
+                Math.floor((elapsedMs / 1000) * TYPEWRITER_CHARS_PER_SECOND),
+            ),
+        );
+
+        setCaptionText(dialogue.slice(0, characters));
+
+        if (characters >= dialogue.length) {
+            dialogueTypewriterState.frameId = null;
+            return;
+        }
+
+        dialogueTypewriterState.frameId = requestAnimationFrame(tick);
+    };
+
+    setCaptionText('');
+    dialogueTypewriterState.frameId = requestAnimationFrame(tick);
+}
+
+function renderDialogueControlState() {
+    if (captionTypewriterToggle) {
+        captionTypewriterToggle.textContent =
+            dialogueTypewriterState.enabled ? 'Typewriter: on' : (
+                'Typewriter: off'
+            );
+    }
+
+    if (captionSkipAllToggle) {
+        captionSkipAllToggle.checked = dialogueTypewriterState.skipAll;
+    }
+}
+
+function setTypewriterEnabled(enabled) {
+    dialogueTypewriterState.enabled = Boolean(enabled);
+    renderDialogueControlState();
+
+    if (!dialogueTypewriterState.enabled) {
+        commitDialogueTypewriterLine();
+    }
+}
+
+function setSkipAllCaptions(enabled) {
+    dialogueTypewriterState.skipAll = Boolean(enabled);
+    renderDialogueControlState();
+
+    if (dialogueTypewriterState.skipAll) {
+        commitDialogueTypewriterLine();
+    }
+}
+
+function clearFixtureReplayTimers() {
+    fixtureReplayState.timers.forEach(timerId => clearTimeout(timerId));
+    fixtureReplayState.timers = [];
+    fixtureReplayState.active = false;
 }
 
 const JURY_STEP_LABELS = Object.freeze({
@@ -140,16 +331,19 @@ function summarizeCaseSoFar(turns) {
         return 'The court has just opened. Waiting for opening statements.';
     }
 
-    return clip(recent.map(turn => `${turn.speaker}: ${turn.dialogue}`).join(' · '));
+    return clip(
+        recent.map(turn => `${turn.speaker}: ${turn.dialogue}`).join(' · '),
+    );
 }
 
 function updateCatchupPanel(session) {
     const phase = session?.phase;
     const turns = session?.turns ?? [];
     catchupSummaryEl.textContent = summarizeCaseSoFar(turns);
-    catchupMetaEl.textContent = phase
-        ? `phase: ${phase} · ${juryStepLabel(phase)}`
-        : 'phase: idle · Jury pending';
+    catchupMetaEl.textContent =
+        phase ?
+            `phase: ${phase} · ${juryStepLabel(phase)}`
+        :   'phase: idle · Jury pending';
 }
 
 function recordCatchupToggleTelemetry(visible, reason) {
@@ -214,9 +408,7 @@ function appendTurn(turn, { recap = false } = {}) {
     item.append(meta, body);
     feed.appendChild(item);
     feed.scrollTop = feed.scrollHeight;
-    activeSpeakerEl.textContent = `${turn.role} · ${turn.speaker}`;
-    pulseActiveSpeaker();
-    captionLineEl.textContent = turn.dialogue;
+    startDialogueTypewriter(turn);
 }
 
 function markTurnRecap(turnId) {
@@ -450,6 +642,10 @@ function updateTimer(phaseStartedAt, phaseDurationMs) {
 }
 
 function scheduleReconnect(sessionId) {
+    if (isFixtureReplayMode) {
+        return;
+    }
+
     if (reconnectTimer || !activeSession || activeSession.id !== sessionId) {
         return;
     }
@@ -494,8 +690,9 @@ function handleSnapshotEvent(snapshotPayload) {
         });
     });
     if (turns.length === 0) {
-        activeSpeakerEl.textContent = 'Waiting for first turn…';
-        captionLineEl.textContent = 'Captions will appear here.';
+        setActiveSpeakerLabel('Waiting for first turn…');
+        dialogueTypewriterState.fullText = 'Captions will appear here.';
+        setCaptionText(dialogueTypewriterState.fullText);
     }
     renderTally(verdictTallies, verdictVotes);
     renderTally(sentenceTallies, sentenceVotes);
@@ -516,6 +713,7 @@ function handleSnapshotEvent(snapshotPayload) {
     }
     renderActions(session);
     renderVoteMeta();
+    syncRendererState();
 }
 
 function handleTurnEvent(turnPayload) {
@@ -531,6 +729,7 @@ function handleTurnEvent(turnPayload) {
         recap: isRecapTurn(streamState, turn.id),
     });
     updateCatchupPanel(activeSession);
+    syncRendererState();
 }
 
 function handleJudgeRecapEvent(recapPayload) {
@@ -549,6 +748,7 @@ function handlePhaseChangedEvent(phasePayload) {
     phaseBadge.textContent = `phase: ${phasePayload.phase}`;
     updateTimer(phasePayload.phaseStartedAt, phasePayload.phaseDurationMs);
     updateCatchupPanel(activeSession);
+    syncRendererState();
     if (phasePayload.phase === 'verdict_vote') {
         openVoteWindow(
             'verdict',
@@ -606,6 +806,67 @@ function handleAnalyticsEvent(analyticsPayload) {
     }
 }
 
+/**
+ * Handle render_directive SSE events — forward to the PixiJS renderer.
+ */
+function handleRenderDirectiveEvent(directivePayload) {
+    if (!courtRenderer?.applyDirective) {
+        return;
+    }
+    const directive = directivePayload.directive;
+    if (directive && typeof directive === 'object') {
+        courtRenderer.applyDirective(directive);
+    }
+}
+
+/**
+ * Handle evidence_revealed SSE events — add card to the renderer tray.
+ */
+function handleEvidenceRevealedEvent(evidencePayload) {
+    if (!courtRenderer?.evidence) {
+        return;
+    }
+    const evidenceId = evidencePayload.evidenceId;
+    const evidenceText = evidencePayload.evidenceText;
+    if (typeof evidenceId === 'string' && typeof evidenceText === 'string') {
+        courtRenderer.evidence.addCard({ id: evidenceId, text: evidenceText });
+    }
+}
+
+/**
+ * Push the current overlay state into the PixiJS renderer (if active).
+ * Extracts role names from the session role assignments when available.
+ */
+function syncRendererState() {
+    if (!courtRenderer) {
+        return;
+    }
+
+    const lastTurn =
+        activeSession?.turns?.length > 0 ?
+            activeSession.turns[activeSession.turns.length - 1]
+        :   null;
+
+    const roleNames = {};
+    const assignments = activeSession?.metadata?.roleAssignments;
+    if (assignments && typeof assignments === 'object') {
+        for (const [role, name] of Object.entries(assignments)) {
+            if (typeof name === 'string') {
+                roleNames[role] = name;
+            }
+        }
+    }
+
+    courtRenderer.update({
+        phase: activeSession?.phase ?? 'idle',
+        activeSpeakerRole: lastTurn?.role ?? null,
+        roleNames,
+        speakerLabel: dialogueTypewriterState.speakerLabel,
+        dialogueContent: dialogueTypewriterState.fullText,
+        nameplate: lastTurn ? `${lastTurn.role} · ${lastTurn.speaker}` : '',
+    });
+}
+
 const STREAM_EVENT_HANDLERS = {
     snapshot: handleSnapshotEvent,
     turn: handleTurnEvent,
@@ -616,7 +877,191 @@ const STREAM_EVENT_HANDLERS = {
     session_completed: handleSessionCompletedEvent,
     session_failed: handleSessionFailedEvent,
     analytics_event: handleAnalyticsEvent,
+    render_directive: handleRenderDirectiveEvent,
+    evidence_revealed: handleEvidenceRevealedEvent,
 };
+
+function dispatchStreamPayload(message) {
+    if (!message || typeof message !== 'object') {
+        return;
+    }
+
+    const type = typeof message.type === 'string' ? message.type : null;
+    if (!type) {
+        return;
+    }
+
+    const handler = STREAM_EVENT_HANDLERS[type];
+    if (!handler) {
+        return;
+    }
+
+    const payload =
+        message.payload && typeof message.payload === 'object' ?
+            message.payload
+        :   {};
+
+    handler(payload);
+}
+
+function readFixtureMessages(fixturePayload) {
+    const rawEvents =
+        Array.isArray(fixturePayload?.events) ? fixturePayload.events : [];
+
+    return rawEvents
+        .map(event => {
+            const offsetMs = Number(event?.offsetMs);
+            const delayMs =
+                Number.isFinite(offsetMs) ? Math.max(0, offsetMs) : 0;
+            const message =
+                event?.message && typeof event.message === 'object' ?
+                    event.message
+                :   event;
+            return { delayMs, message };
+        })
+        .filter(entry => entry.message && typeof entry.message === 'object');
+}
+
+async function fetchFixturePayload() {
+    if (!fixtureReplayUrl) {
+        throw new Error('Missing replayFixture URL');
+    }
+
+    const response = await fetch(fixtureReplayUrl, { cache: 'no-store' });
+    if (!response.ok) {
+        throw new Error(
+            `fixture fetch failed with ${response.status} ${response.statusText}`,
+        );
+    }
+
+    return await response.json();
+}
+
+function buildFixtureSessionFromSnapshot(fixturePayload) {
+    const replayMessages = readFixtureMessages(fixturePayload);
+    const snapshotEnvelope = replayMessages
+        .map(entry => entry.message)
+        .find(message => message?.type === 'snapshot');
+
+    const snapshotPayload =
+        snapshotEnvelope && typeof snapshotEnvelope.payload === 'object' ?
+            snapshotEnvelope.payload
+        :   null;
+
+    if (
+        !snapshotPayload?.session ||
+        typeof snapshotPayload.session !== 'object'
+    ) {
+        return null;
+    }
+
+    const session = snapshotPayload.session;
+    const metadata =
+        typeof session.metadata === 'object' && session.metadata !== null ?
+            session.metadata
+        :   {};
+
+    return {
+        ...session,
+        turns:
+            Array.isArray(snapshotPayload.turns) ? snapshotPayload.turns : [],
+        metadata: {
+            ...metadata,
+            verdictVotes:
+                snapshotPayload.verdictVotes ?? metadata.verdictVotes ?? {},
+            sentenceVotes:
+                snapshotPayload.sentenceVotes ?? metadata.sentenceVotes ?? {},
+            recapTurnIds:
+                snapshotPayload.recapTurnIds ?? metadata.recapTurnIds ?? [],
+        },
+    };
+}
+
+async function replayFixtureSession(sessionId) {
+    if (!isFixtureReplayMode || !fixtureReplayUrl) {
+        return;
+    }
+
+    clearFixtureReplayTimers();
+
+    try {
+        const fixturePayload = await fetchFixturePayload();
+        const fixtureSessionId =
+            typeof fixturePayload?.sessionId === 'string' ?
+                fixturePayload.sessionId
+            :   null;
+
+        if (fixtureSessionId && fixtureSessionId !== sessionId) {
+            setStatus(
+                `Fixture replay session mismatch: expected ${sessionId.slice(0, 8)}, got ${fixtureSessionId.slice(0, 8)}.`,
+                'error',
+            );
+        }
+
+        const replayMessages = readFixtureMessages(fixturePayload);
+        if (replayMessages.length === 0) {
+            setStatus(
+                'Fixture loaded, but no replay events were found.',
+                'error',
+            );
+            return;
+        }
+
+        fixtureReplayState.active = true;
+        setConnectionBanner(
+            'Fixture replay mode active. Live SSE is disabled.',
+        );
+        setStatus(`Replaying fixture (${replayMessages.length} events).`);
+
+        replayMessages.forEach(({ delayMs, message }, index) => {
+            const timerId = setTimeout(() => {
+                dispatchStreamPayload(message);
+
+                if (index === replayMessages.length - 1) {
+                    fixtureReplayState.active = false;
+                    setStatus('Fixture replay finished.');
+                }
+            }, delayMs);
+
+            fixtureReplayState.timers.push(timerId);
+        });
+    } catch (error) {
+        fixtureReplayState.active = false;
+        setStatus(
+            `Fixture replay failed: ${error instanceof Error ? error.message : String(error)}`,
+            'error',
+        );
+    }
+}
+
+async function hydrateFromFixtureReplay() {
+    if (!isFixtureReplayMode) {
+        return false;
+    }
+
+    try {
+        const fixturePayload = await fetchFixturePayload();
+        const fixtureSession = buildFixtureSessionFromSnapshot(fixturePayload);
+
+        if (!fixtureSession?.id) {
+            throw new Error(
+                'fixture does not contain a valid snapshot session',
+            );
+        }
+
+        hydrateSession(
+            fixtureSession,
+            'Loaded fixture snapshot. Replaying recorded stream.',
+        );
+        return true;
+    } catch (error) {
+        setStatus(
+            `Failed to hydrate fixture replay: ${error instanceof Error ? error.message : String(error)}`,
+            'error',
+        );
+        return false;
+    }
+}
 
 function connectStream(sessionId, isReconnect = false) {
     if (source) {
@@ -627,6 +1072,11 @@ function connectStream(sessionId, isReconnect = false) {
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
+    }
+
+    if (isFixtureReplayMode) {
+        void replayFixtureSession(sessionId);
+        return;
     }
 
     source = new EventSource(`/api/court/sessions/${sessionId}/stream`);
@@ -641,12 +1091,7 @@ function connectStream(sessionId, isReconnect = false) {
 
     source.onmessage = event => {
         const payload = JSON.parse(event.data);
-        const handler = STREAM_EVENT_HANDLERS[payload.type];
-        if (!handler) {
-            return;
-        }
-
-        handler(payload.payload);
+        dispatchStreamPayload(payload);
     };
 
     source.onerror = () => {
@@ -657,6 +1102,64 @@ function connectStream(sessionId, isReconnect = false) {
         }
         scheduleReconnect(sessionId);
     };
+}
+
+function hydrateSession(session, statusMessage) {
+    clearFixtureReplayTimers();
+    activeSession = session;
+    activeSession.turns = session.turns || [];
+
+    sessionMeta.textContent = `${activeSession.id} · ${activeSession.status}`;
+    phaseBadge.textContent = `phase: ${activeSession.phase}`;
+
+    feed.innerHTML = '';
+    resetStreamState(streamState, {
+        turns: activeSession.turns,
+        recapTurnIds: activeSession.metadata.recapTurnIds ?? [],
+    });
+
+    activeSession.turns.forEach(turn => {
+        appendTurn(turn, {
+            recap: isRecapTurn(streamState, turn.id),
+        });
+    });
+
+    if (activeSession.turns.length === 0) {
+        setActiveSpeakerLabel('Waiting for first turn…');
+        dialogueTypewriterState.fullText = 'Captions will appear here.';
+        setCaptionText(dialogueTypewriterState.fullText);
+    }
+
+    renderTally(verdictTallies, activeSession.metadata.verdictVotes);
+    renderTally(sentenceTallies, activeSession.metadata.sentenceVotes);
+
+    resetVoteState();
+    if (activeSession.phase === 'verdict_vote') {
+        openVoteWindow(
+            'verdict',
+            activeSession.metadata.phaseStartedAt,
+            activeSession.metadata.phaseDurationMs,
+        );
+    }
+
+    if (activeSession.phase === 'sentence_vote') {
+        openVoteWindow(
+            'sentence',
+            activeSession.metadata.phaseStartedAt,
+            activeSession.metadata.phaseDurationMs,
+        );
+    }
+
+    renderActions(activeSession);
+    renderVoteMeta();
+    updateTimer(
+        activeSession.metadata.phaseStartedAt,
+        activeSession.metadata.phaseDurationMs,
+    );
+    updateCatchupPanel(activeSession);
+    connectStream(activeSession.id);
+
+    setStatus(statusMessage);
 }
 
 startBtn.onclick = async () => {
@@ -686,26 +1189,142 @@ startBtn.onclick = async () => {
             return;
         }
 
-        activeSession = data.session;
-        activeSession.turns = data.session.turns || [];
-        sessionMeta.textContent = `${activeSession.id} · ${activeSession.status}`;
-        phaseBadge.textContent = `phase: ${activeSession.phase}`;
-        feed.innerHTML = '';
-        renderTally(verdictTallies, activeSession.metadata.verdictVotes);
-        renderTally(sentenceTallies, activeSession.metadata.sentenceVotes);
-        renderActions(activeSession);
-        updateTimer(
-            activeSession.metadata.phaseStartedAt,
-            activeSession.metadata.phaseDurationMs,
+        hydrateSession(
+            data.session,
+            'Session started. Court is now in session.',
         );
-        updateCatchupPanel(activeSession);
-        connectStream(activeSession.id);
-        setStatus('Session started. Court is now in session.');
     } finally {
         setStartLoading(false);
     }
 };
 
+async function connectLatestSession() {
+    try {
+        const response = await fetch('/api/court/sessions');
+        if (!response.ok) {
+            if (isFixtureReplayMode) {
+                await hydrateFromFixtureReplay();
+            }
+            return;
+        }
+
+        const data = await response.json();
+        const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+        if (sessions.length === 0) {
+            if (isFixtureReplayMode) {
+                const hydrated = await hydrateFromFixtureReplay();
+                if (!hydrated) {
+                    setStatus(
+                        'No active session and fixture replay failed.',
+                        'error',
+                    );
+                }
+            } else {
+                setStatus('No active session. Start one to begin.');
+            }
+            return;
+        }
+
+        const selectedSession =
+            sessions.find(session => session?.status === 'running') ??
+            sessions[0];
+        const selectedSessionId = selectedSession?.id;
+        if (!selectedSessionId) {
+            return;
+        }
+
+        const sessionResponse = await fetch(
+            `/api/court/sessions/${selectedSessionId}`,
+        );
+        if (!sessionResponse.ok) {
+            return;
+        }
+
+        const sessionData = await sessionResponse.json();
+        if (!sessionData?.session) {
+            return;
+        }
+
+        const statusMessage =
+            sessionData.session.status === 'running' ?
+                'Connected to live session.'
+            :   'Loaded latest session snapshot.';
+        hydrateSession(sessionData.session, statusMessage);
+    } catch (error) {
+        if (isFixtureReplayMode) {
+            const hydrated = await hydrateFromFixtureReplay();
+            if (hydrated) {
+                return;
+            }
+        }
+
+        // eslint-disable-next-line no-console
+        console.warn(
+            'Failed to auto-attach latest session:',
+            error instanceof Error ? error.message : error,
+        );
+    }
+}
+
 catchupToggleBtn.onclick = () => {
     setCatchupVisible(!catchupState.visible);
 };
+
+function isEditableElementFocused() {
+    const focused = document.activeElement;
+    if (!focused) {
+        return false;
+    }
+
+    const tag = focused.tagName;
+    return (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        focused.isContentEditable
+    );
+}
+
+if (captionSkipBtn) {
+    captionSkipBtn.onclick = () => {
+        skipDialogueTypewriter();
+    };
+}
+
+if (captionSkipAllToggle) {
+    captionSkipAllToggle.onchange = event => {
+        const nextChecked = Boolean(event.target?.checked);
+        setSkipAllCaptions(nextChecked);
+    };
+}
+
+if (captionTypewriterToggle) {
+    captionTypewriterToggle.onclick = () => {
+        setTypewriterEnabled(!dialogueTypewriterState.enabled);
+    };
+}
+
+document.addEventListener('keydown', event => {
+    if (isEditableElementFocused()) {
+        return;
+    }
+
+    if (event.key === 'Escape' || event.key === 'Enter') {
+        event.preventDefault();
+        skipDialogueTypewriter();
+    }
+});
+
+renderDialogueControlState();
+dialogueTypewriterState.fullText = captionLineEl.textContent;
+setActiveSpeakerLabel(activeSpeakerEl.textContent);
+setCaptionText(dialogueTypewriterState.fullText);
+
+if (isFixtureReplayMode) {
+    setConnectionBanner(
+        `Fixture replay mode enabled (${fixtureReplayUrl}). Live SSE disabled.`,
+    );
+}
+
+void bootstrapCourtRenderer();
+void connectLatestSession();
