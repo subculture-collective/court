@@ -643,9 +643,147 @@ Emitted when the objection counter increments (typically on moderation flags).
 
 ---
 
+### `render_directive` (Phase 7)
+
+Emitted when a visual/audio render directive is generated for the overlay renderer.
+Directives are inferred from role, phase, and dialogue content (e.g. objection keywords trigger effects).
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    directive: {
+        camera?: CameraPreset;     // 'wide' | 'judge' | 'prosecution' | 'defense' | 'witness' | 'evidence' | 'verdict'
+        poses?: Partial<Record<CourtRole, CharacterPose>>;  // e.g. { prosecutor: 'point' }
+        faces?: Partial<Record<CourtRole, CharacterFace>>;  // e.g. { prosecutor: 'angry' }
+        effect?: string;           // 'objection' | 'hold_it' | 'take_that' | 'flash' | 'shake' | 'freeze'
+        evidencePresent?: string;  // evidence ID to display
+    };
+    phase: CourtPhase;
+    emittedAt: string;             // ISO 8601
+}
+```
+
+**Example**
+
+```json
+{
+    "type": "render_directive",
+    "payload": {
+        "directive": {
+            "camera": "prosecution",
+            "effect": "objection",
+            "poses": { "prosecutor": "point" }
+        },
+        "phase": "witness_exam",
+        "emittedAt": "2024-01-15T10:03:00.000Z"
+    }
+}
+```
+
+---
+
+### `case_file_generated` (Phase 7)
+
+Emitted once at session start when the structured case file is built.
+Contains the immutable case summary, charges, witness roster, and evidence inventory.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    caseFile: {
+        title: string;
+        synopsis: string;
+        charges: string[];
+        witnesses: Array<{ role: string; agentId: string; name: string }>;
+        evidence: Array<{ id: string; label: string; description: string }>;
+        sentenceOptions: string[];
+    };
+    sessionId: string;
+    generatedAt: string;   // ISO 8601
+}
+```
+
+**Example**
+
+```json
+{
+    "type": "case_file_generated",
+    "payload": {
+        "caseFile": {
+            "title": "The People v. Office Thermostat",
+            "synopsis": "The defendant is accused of stealing the office thermostat",
+            "charges": ["As stated in case prompt"],
+            "witnesses": [
+                { "role": "witness_1", "agentId": "thaum", "name": "Thaum" }
+            ],
+            "evidence": [
+                {
+                    "id": "exhibit_a",
+                    "label": "Exhibit A",
+                    "description": "Placeholder evidence"
+                }
+            ],
+            "sentenceOptions": ["Community service", "Fine"]
+        },
+        "sessionId": "f5d6e7f8-…",
+        "generatedAt": "2024-01-15T10:00:02.000Z"
+    }
+}
+```
+
+---
+
+### `witness_statement` (Phase 7)
+
+Emitted each time a witness delivers testimony during examination.
+Statements are accumulated in `session.metadata.witnessStatements` for press/present mechanics.
+
+**Severity:** `info`
+
+**Payload**
+
+```ts
+{
+    statement: {
+        witnessRole: string; // e.g. 'witness_1'
+        agentId: AgentId;
+        statementText: string;
+        issuedAt: string; // ISO 8601
+    }
+    phase: CourtPhase;
+    emittedAt: string; // ISO 8601
+}
+```
+
+**Example**
+
+```json
+{
+    "type": "witness_statement",
+    "payload": {
+        "statement": {
+            "witnessRole": "witness_1",
+            "agentId": "thaum",
+            "statementText": "I saw the defendant near the thermostat at approximately 3 PM.",
+            "issuedAt": "2024-01-15T10:02:15.000Z"
+        },
+        "phase": "witness_exam",
+        "emittedAt": "2024-01-15T10:02:15.000Z"
+    }
+}
+```
+
+---
+
 ## Severity levels
 
-- **info**: `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `witness_response_capped`, `judge_recap_emitted`, `token_budget_applied`, `session_token_estimate`, `analytics_event`, `session_completed`, `broadcast_hook_triggered`, `evidence_revealed`, `objection_count_changed`
+- **info**: `session_created`, `session_started`, `phase_changed`, `turn`, `vote_updated`, `vote_closed`, `witness_response_capped`, `judge_recap_emitted`, `token_budget_applied`, `session_token_estimate`, `analytics_event`, `session_completed`, `broadcast_hook_triggered`, `evidence_revealed`, `objection_count_changed`, `render_directive`, `case_file_generated`, `witness_statement`
 - **warn**: `moderation_action`, `vote_spam_blocked`, `broadcast_hook_failed`
 - **error**: `session_failed`
 

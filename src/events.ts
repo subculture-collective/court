@@ -5,7 +5,7 @@
  * Use `assertEventPayload` to validate a raw `CourtEvent` at runtime.
  */
 
-import type { CourtEvent, CourtPhase } from './types.js';
+import type { CourtEvent, CourtPhase, RenderDirective, CaseFile, WitnessStatement } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Payload interfaces
@@ -154,6 +154,27 @@ export interface ObjectionCountChangedPayload {
     count: number;
     phase: string;
     changedAt: string; // ISO 8601
+}
+
+// Phase 7 payload interfaces
+
+export interface RenderDirectivePayload {
+    directive: RenderDirective;
+    turnId?: string;
+    phase: string;
+    emittedAt: string; // ISO 8601
+}
+
+export interface WitnessStatementPayload {
+    statement: WitnessStatement;
+    phase: string;
+    emittedAt: string; // ISO 8601
+}
+
+export interface CaseFileGeneratedPayload {
+    caseFile: CaseFile;
+    sessionId: string;
+    generatedAt: string; // ISO 8601
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +408,40 @@ export function assertEventPayload(event: CourtEvent): void {
             ) {
                 throw new TypeError(
                     `objection_count_changed payload missing required fields: count (number), phase, changedAt`,
+                );
+            }
+            break;
+
+        // Phase 7 event types
+        case 'render_directive':
+            if (
+                !hasObjectKey(payload, 'directive') ||
+                !hasStringKeys(payload, ['phase', 'emittedAt'])
+            ) {
+                throw new TypeError(
+                    `render_directive payload missing required fields: directive (object), phase, emittedAt`,
+                );
+            }
+            break;
+
+        case 'witness_statement':
+            if (
+                !hasObjectKey(payload, 'statement') ||
+                !hasStringKeys(payload, ['phase', 'emittedAt'])
+            ) {
+                throw new TypeError(
+                    `witness_statement payload missing required fields: statement (object), phase, emittedAt`,
+                );
+            }
+            break;
+
+        case 'case_file_generated':
+            if (
+                !hasObjectKey(payload, 'caseFile') ||
+                !hasStringKeys(payload, ['sessionId', 'generatedAt'])
+            ) {
+                throw new TypeError(
+                    `case_file_generated payload missing required fields: caseFile (object), sessionId, generatedAt`,
                 );
             }
             break;

@@ -434,3 +434,104 @@ test('assertEventPayload: session_failed missing reason', () => {
         TypeError,
     );
 });
+
+// ---------------------------------------------------------------------------
+// Phase 7: render_directive
+// ---------------------------------------------------------------------------
+
+test('assertEventPayload: render_directive valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('render_directive', {
+                directive: { camera: 'judge', effect: 'objection' },
+                phase: 'witness_exam',
+                emittedAt: new Date().toISOString(),
+            }),
+        ),
+    );
+});
+
+test('assertEventPayload: render_directive missing directive object', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('render_directive', {
+                    phase: 'openings',
+                    emittedAt: new Date().toISOString(),
+                }),
+            ),
+        TypeError,
+    );
+});
+
+// ---------------------------------------------------------------------------
+// Phase 7: witness_statement
+// ---------------------------------------------------------------------------
+
+test('assertEventPayload: witness_statement valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('witness_statement', {
+                statement: {
+                    witnessRole: 'witness_1',
+                    agentId: 'chora',
+                    statementText: 'I saw it happen.',
+                    issuedAt: new Date().toISOString(),
+                },
+                phase: 'witness_exam',
+                emittedAt: new Date().toISOString(),
+            }),
+        ),
+    );
+});
+
+test('assertEventPayload: witness_statement missing statement', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('witness_statement', {
+                    phase: 'witness_exam',
+                    emittedAt: new Date().toISOString(),
+                }),
+            ),
+        TypeError,
+    );
+});
+
+// ---------------------------------------------------------------------------
+// Phase 7: case_file_generated
+// ---------------------------------------------------------------------------
+
+test('assertEventPayload: case_file_generated valid', () => {
+    assert.doesNotThrow(() =>
+        assertEventPayload(
+            makeEvent('case_file_generated', {
+                caseFile: {
+                    title: 'Test Case',
+                    genre: 'absurd_civil',
+                    caseType: 'civil',
+                    synopsis: 'A test case',
+                    charges: [],
+                    witnesses: [],
+                    evidence: [],
+                    sentenceOptions: ['warning'],
+                },
+                sessionId: 'sess-1',
+                generatedAt: new Date().toISOString(),
+            }),
+        ),
+    );
+});
+
+test('assertEventPayload: case_file_generated missing caseFile', () => {
+    assert.throws(
+        () =>
+            assertEventPayload(
+                makeEvent('case_file_generated', {
+                    sessionId: 'sess-1',
+                    generatedAt: new Date().toISOString(),
+                }),
+            ),
+        TypeError,
+    );
+});

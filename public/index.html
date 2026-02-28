@@ -125,6 +125,30 @@
                 gap: 8px;
             }
 
+            .pixi-stage {
+                min-height: 380px;
+                border: 1px solid #2b2f41;
+                border-radius: 10px;
+                background: linear-gradient(135deg, #0d1423, #171f33);
+                overflow: hidden;
+                position: relative;
+            }
+
+            .pixi-stage[data-pixi-ready='false']::before {
+                content: 'Renderer stage bootstrapping…';
+                color: var(--muted);
+                font-size: 12px;
+                position: absolute;
+                left: 10px;
+                top: 8px;
+            }
+
+            .pixi-stage canvas {
+                width: 100% !important;
+                height: 380px !important;
+                display: block;
+            }
+
             .banner {
                 border: 1px solid #4f2f35;
                 background: color-mix(in srgb, var(--danger) 12%, #1a1216);
@@ -144,6 +168,37 @@
                 gap: 8px;
                 font-size: 13px;
                 color: var(--muted);
+            }
+
+            .caption-controls {
+                align-items: center;
+                flex-wrap: wrap;
+            }
+
+            .caption-controls-actions {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+            }
+
+            .caption-controls-actions .badge {
+                background: #171a28;
+            }
+
+            .caption-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .caption-toggle input {
+                width: auto;
+                margin: 0;
+                accent-color: var(--accent);
             }
 
             #captionLine {
@@ -382,6 +437,12 @@
                     <span class="badge" id="phaseBadge">phase: idle</span>
                 </div>
                 <div class="overlay-shell">
+                    <div
+                        id="pixiStage"
+                        class="pixi-stage"
+                        data-pixi-ready="false"
+                        aria-live="off"
+                    ></div>
                     <div class="overlay-row">
                         <span>⏱️ Phase timer</span>
                         <span id="phaseTimer">--:--</span>
@@ -393,13 +454,44 @@
                         <span>🎙️ Active speaker</span>
                         <span id="activeSpeaker">Waiting for first turn…</span>
                     </div>
+                    <div class="overlay-row caption-controls">
+                        <span>⌨️ Dialogue animation</span>
+                        <div class="caption-controls-actions">
+                            <button
+                                id="captionSkipBtn"
+                                type="button"
+                                class="badge"
+                            >
+                                Skip line
+                            </button>
+                            <button
+                                id="captionTypewriterToggle"
+                                type="button"
+                                class="badge"
+                            >
+                                Typewriter: on
+                            </button>
+                            <label class="caption-toggle" for="captionSkipAll">
+                                <input id="captionSkipAll" type="checkbox" />
+                                Always skip
+                            </label>
+                        </div>
+                    </div>
                     <div id="captionLine">Captions will appear here.</div>
                 </div>
 
                 <div class="catchup-shell">
                     <div class="catchup-header">
-                        <h3 style="margin: 0; font-size: 14px">🧭 Case so far</h3>
-                        <button id="catchupToggle" type="button" class="badge" aria-expanded="true" aria-controls="catchupBody">
+                        <h3 style="margin: 0; font-size: 14px">
+                            🧭 Case so far
+                        </h3>
+                        <button
+                            id="catchupToggle"
+                            type="button"
+                            class="badge"
+                            aria-expanded="true"
+                            aria-controls="catchupBody"
+                        >
                             Hide
                         </button>
                     </div>
@@ -454,6 +546,7 @@
             </aside>
         </div>
 
+        <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.9.1/dist/pixi.min.js"></script>
         <script type="module" src="/app.js"></script>
     </body>
 </html>

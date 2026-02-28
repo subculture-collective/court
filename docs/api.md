@@ -21,6 +21,21 @@ Returns service liveness.
 
 ---
 
+### `GET /api/metrics`
+
+Returns Prometheus-format telemetry metrics. Includes session lifecycle counters, phase transitions, vote latency histograms, SSE connection gauges, and default Node.js process metrics (prefixed `juryrigged_`).
+
+**Response `200`** — `Content-Type: text/plain; version=0.0.4; charset=utf-8`
+
+```
+# HELP juryrigged_votes_cast_total Total number of accepted jury votes
+# TYPE juryrigged_votes_cast_total counter
+juryrigged_votes_cast_total{vote_type="verdict"} 5
+...
+```
+
+---
+
 ## Sessions
 
 ### `GET /api/court/sessions`
@@ -53,12 +68,12 @@ Creates and immediately starts a new court session.
 
 **Request body**
 
-| Field             | Type                    | Required | Description                                                                             |
-| ----------------- | ----------------------- | -------- | --------------------------------------------------------------------------------------- |
+| Field             | Type                    | Required | Description                                                                                                                                              |
+| ----------------- | ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `topic`           | `string`                | ❌       | Case description. When provided, must be at least 10 characters and will be screened for safety. If omitted or empty, falls back to a prompt-bank entry. |
-| `caseType`        | `"criminal" \| "civil"` | ❌       | Defaults to `"criminal"`.                                                               |
-| `participants`    | `AgentId[]`             | ❌       | List of agent IDs to include. Defaults to all six agents. Must be at least 4 valid IDs. |
-| `sentenceOptions` | `string[]`              | ❌       | Custom sentence choices for the sentencing poll. Defaults to five built-in options.     |
+| `caseType`        | `"criminal" \| "civil"` | ❌       | Defaults to `"criminal"`.                                                                                                                                |
+| `participants`    | `AgentId[]`             | ❌       | List of agent IDs to include. Defaults to all six agents. Must be at least 4 valid IDs.                                                                  |
+| `sentenceOptions` | `string[]`              | ❌       | Custom sentence choices for the sentencing poll. Defaults to five built-in options.                                                                      |
 
 **Response `201`** — `{ "session": <CourtSession> }`
 
@@ -129,6 +144,44 @@ Additional error codes:
 - `VOTE_RATE_LIMITED` (`429`)
 - `VOTE_DUPLICATE` (`429`)
 - `VOTE_FAILED` (`500`)
+
+---
+
+### `POST /api/court/sessions/:id/press`
+
+Audience "press" action during witness examination. Emits a shake render directive targeting the active witness camera.
+
+**Request body** — none required
+
+**Response `200`**
+
+```json
+{ "ok": true, "action": "press" }
+```
+
+**Response `404`** — session not found (`SESSION_NOT_FOUND`)
+
+---
+
+### `POST /api/court/sessions/:id/present`
+
+Audience "present evidence" action. Emits a `take_that` render directive with the specified evidence and switches camera to the evidence view.
+
+**Request body**
+
+| Field        | Type     | Required | Description                    |
+| ------------ | -------- | -------- | ------------------------------ |
+| `evidenceId` | `string` | ✅       | ID of the evidence to present. |
+
+**Response `200`**
+
+```json
+{ "ok": true, "action": "present", "evidenceId": "exhibit_a" }
+```
+
+**Response `400`** — `MISSING_EVIDENCE_ID` — `evidenceId` is required
+
+**Response `404`** — session not found (`SESSION_NOT_FOUND`)
 
 ---
 
@@ -284,21 +337,55 @@ Every SSE payload is a `CourtEvent`:
 
 ### Event Types
 
-| Type                      | When emitted                                                        | Key payload fields                                                          |
-| ------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `snapshot`                | Immediately on SSE connect                                          | `session`, `turns`, `verdictVotes`, `sentenceVotes`, `recapTurnIds`         |
-| `session_created`         | Session record inserted                                             | `sessionId`                                                                 |
-| `session_started`         | Orchestration begins                                                | `sessionId`, `startedAt`                                                    |
-| `phase_changed`           | Phase advances                                                      | `phase`, `phaseStartedAt`, `phaseDurationMs`                               |
-| `turn`                    | A new dialogue turn is stored                                       | `turn: CourtTurn`                                                           |
-| `vote_updated`            | A vote is successfully cast                                         | `voteType`, `choice`, `verdictVotes`, `sentenceVotes`                       |
-| `vote_closed`             | Transitioned away from a vote phase; includes frozen tally snapshot | `pollType`, `closedAt`, `votes`, `nextPhase`                                |
-| `witness_response_capped` | Witness response was truncated due to caps                          | `turnId`, `speaker`, `phase`, `originalLength`, `truncatedLength`, `reason` |
-| `judge_recap_emitted`     | Judge recap emitted during witness exam                             | `turnId`, `phase`, `cycleNumber`                                            |
-| `token_budget_applied`    | Per-role token budget applied to generated turn                     | `turnId`, `speaker`, `role`, `phase`, `requestedMaxTokens`, `appliedMaxTokens`, `roleMaxTokens`, `source` |
+| Type                      | When emitted                                                        | Key payload fields                                                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `snapshot`                | Immediately on SSE connect                                          | `session`, `turns`, `verdictVotes`, `sentenceVotes`, `recapTurnIds`                                                                                    |
+| `session_created`         | Session record inserted                                             | `sessionId`                                                                                                                                            |
+| `session_started`         | Orchestration begins                                                | `sessionId`, `startedAt`                                                                                                                               |
+| `phase_changed`           | Phase advances                                                      | `phase`, `phaseStartedAt`, `phaseDurationMs`                                                                                                           |
+| `turn`                    | A new dialogue turn is stored                                       | `turn: CourtTurn`                                                                                                                                      |
+| `vote_updated`            | A vote is successfully cast                                         | `voteType`, `choice`, `verdictVotes`, `sentenceVotes`                                                                                                  |
+| `vote_closed`             | Transitioned away from a vote phase; includes frozen tally snapshot | `pollType`, `closedAt`, `votes`, `nextPhase`                                                                                                           |
+| `witness_response_capped` | Witness response was truncated due to caps                          | `turnId`, `speaker`, `phase`, `originalLength`, `truncatedLength`, `reason`                                                                            |
+| `judge_recap_emitted`     | Judge recap emitted during witness exam                             | `turnId`, `phase`, `cycleNumber`                                                                                                                       |
+| `token_budget_applied`    | Per-role token budget applied to generated turn                     | `turnId`, `speaker`, `role`, `phase`, `requestedMaxTokens`, `appliedMaxTokens`, `roleMaxTokens`, `source`                                              |
 | `session_token_estimate`  | Cumulative session token/cost estimate updated                      | `turnId`, `role`, `phase`, `estimatedPromptTokens`, `estimatedCompletionTokens`, `cumulativeEstimatedTokens`, `costPer1kTokensUsd`, `estimatedCostUsd` |
-| `analytics_event`         | Poll open/close lifecycle events                                    | `name`, `pollType`, `phase?`, `choice?`                                    |
-| `moderation_action`       | Turn content was flagged and redacted                               | `turnId`, `speaker`, `reasons`, `phase`                                    |
-| `vote_spam_blocked`       | Vote rejected due to rate limiting or duplicate detection           | `ip`, `voteType`, `reason`, `retryAfterMs`                                  |
-| `session_completed`       | Session reached `final_ruling` successfully                         | `sessionId`, `completedAt`                                                  |
-| `session_failed`          | Orchestration threw an unrecoverable error                          | `sessionId`, `reason`                                                       |
+| `analytics_event`         | Poll open/close lifecycle events                                    | `name`, `pollType`, `phase?`, `choice?`                                                                                                                |
+| `moderation_action`       | Turn content was flagged and redacted                               | `turnId`, `speaker`, `reasons`, `phase`                                                                                                                |
+| `vote_spam_blocked`       | Vote rejected due to rate limiting or duplicate detection           | `ip`, `voteType`, `reason`, `retryAfterMs`                                                                                                             |
+| `session_completed`       | Session reached `final_ruling` successfully                         | `sessionId`, `completedAt`                                                                                                                             |
+| `session_failed`          | Orchestration threw an unrecoverable error                          | `sessionId`, `reason`                                                                                                                                  |
+| `render_directive`        | Visual/audio directive emitted for renderer                         | `directive`, `phase`, `emittedAt`                                                                                                                      |
+| `case_file_generated`     | Structured case file built at session start                         | `caseFile`, `sessionId`, `generatedAt`                                                                                                                 |
+| `witness_statement`       | Witness testimony statement emitted                                 | `statement`, `phase`, `emittedAt`                                                                                                                      |
+| `evidence_revealed`       | Evidence item revealed during examination                           | `evidenceId`, `label`, `phase`                                                                                                                         |
+
+---
+
+## SSE Fixture Recording
+
+Record a live SSE stream to a fixture file:
+
+```bash
+npm run record:sse -- --session <SESSION_ID>
+```
+
+Defaults:
+
+- Base URL: `http://127.0.0.1:${PORT}`
+- Output: `public/fixtures/sse-<SESSION_ID>-<timestamp>.json`
+
+Optional flags:
+
+| Flag                | Description                   |
+| ------------------- | ----------------------------- |
+| `--base <url>`      | Override the SSE base URL     |
+| `--out <path>`      | Override the output file path |
+| `--max-events <n>`  | Stop after recording N events |
+| `--duration-ms <n>` | Stop after N milliseconds     |
+
+Replay a fixture in the browser overlay by adding a query param:
+
+```
+http://localhost:3000/?replayFixture=/fixtures/<fixture-file>.json
+```

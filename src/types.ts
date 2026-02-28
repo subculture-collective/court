@@ -114,6 +114,10 @@ export interface CourtSessionMetadata {
     genreHistory?: GenreTag[]; // Last N genres used
     evidenceCards?: EvidenceCard[];
     objectionCount?: number;
+    // Phase 7 additions
+    caseFile?: CaseFile;
+    witnessStatements?: WitnessStatement[];
+    lastRenderDirective?: RenderDirective;
 }
 
 export interface CourtSession {
@@ -165,7 +169,11 @@ export type CourtEventType =
     | 'broadcast_hook_triggered'
     | 'broadcast_hook_failed'
     | 'evidence_revealed'
-    | 'objection_count_changed';
+    | 'objection_count_changed'
+    // Phase 7 additions
+    | 'render_directive'
+    | 'witness_statement'
+    | 'case_file_generated';
 
 export interface CourtEvent {
     id: string;
@@ -185,4 +193,91 @@ export interface LLMGenerateOptions {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Render Directives (#70)
+// ---------------------------------------------------------------------------
+
+export type RenderEffectCue =
+    | 'flash'
+    | 'shake'
+    | 'freeze'
+    | 'stamp'
+    | 'objection'
+    | 'hold_it'
+    | 'take_that';
+
+export type CameraPreset =
+    | 'wide'
+    | 'judge'
+    | 'prosecution'
+    | 'defense'
+    | 'witness'
+    | 'evidence'
+    | 'verdict';
+
+export type CharacterPose =
+    | 'idle'
+    | 'talk'
+    | 'point'
+    | 'slam'
+    | 'think'
+    | 'shock';
+
+export type CharacterFace =
+    | 'neutral'
+    | 'angry'
+    | 'happy'
+    | 'surprised'
+    | 'sweating';
+
+export interface RenderDirective {
+    camera?: CameraPreset;
+    effect?: RenderEffectCue;
+    effectOpts?: Record<string, unknown>;
+    poses?: Partial<Record<CourtRole, CharacterPose>>;
+    faces?: Partial<Record<CourtRole, CharacterFace>>;
+    evidencePresent?: string; // evidence ID to present
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Structured Case File (#67)
+// ---------------------------------------------------------------------------
+
+export interface CaseFileWitness {
+    role: CourtRole;
+    agentId: AgentId;
+    displayName: string;
+    bio: string;
+}
+
+export interface CaseFileEvidence {
+    id: string;
+    label: string;
+    description: string;
+    revealPhase: CourtPhase;
+}
+
+export interface CaseFile {
+    title: string;
+    genre: GenreTag;
+    caseType: CaseType;
+    synopsis: string;
+    charges: string[];
+    witnesses: CaseFileWitness[];
+    evidence: CaseFileEvidence[];
+    sentenceOptions: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Witness Statement (#75)
+// ---------------------------------------------------------------------------
+
+export interface WitnessStatement {
+    witnessRole: CourtRole;
+    agentId: AgentId;
+    statementText: string;
+    issuedAt: string; // ISO 8601
+    contradictions?: string[]; // IDs of evidence that contradict
 }

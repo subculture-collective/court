@@ -18,6 +18,26 @@ import {
     createCourtSessionStore,
 } from './store/session-store.js';
 import { VoteSpamGuard } from './moderation/vote-spam.js';
+import {
+    elapsedSecondsSince,
+    instrumentCourtSessionStore,
+    metricsContentType,
+    recordSseConnectionClosed,
+    recordSseConnectionOpened,
+    recordSseEventSent,
+    recordVoteCast,
+    recordVoteRejected,
+    renderMetrics,
+} from './metrics.js';
+import {
+    createSyntheticEvent,
+    loadReplayRecording,
+    parseReplaySpeed,
+    resolveRecordingsDir,
+    rewriteReplayEventForSession,
+    SessionEventRecorderManager,
+    type LoadedReplayRecording,
+} from './replay/session-replay.js';
 import type {
     AgentId,
     CaseType,
@@ -58,7 +78,9 @@ function mapSessionMutationError(input: {
     message: string;
 } {
     const message =
-        input.error instanceof Error ? input.error.message : input.fallbackMessage;
+        input.error instanceof Error ?
+            input.error.message
+        :   input.fallbackMessage;
 
     if (input.error instanceof CourtValidationError) {
         return {
@@ -88,11 +110,99 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+export interface ReplayRuntimeOptions {
+    filePath: string;
+    speed?: number;
+}
+
+export interface ReplayLaunchConfig {
+    filePath: string;
+    speed: number;
+}
+
+export function parseReplayLaunchConfig(
+    argv: string[] = process.argv.slice(2),
+    env: NodeJS.ProcessEnv = process.env,
+): ReplayLaunchConfig | undefined {
+    let replayFile = env.REPLAY_FILE?.trim() ?? '';
+    let replaySpeed = parseReplaySpeed(env.REPLAY_SPEED);
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const token = argv[index];
+        if (token === '--replay') {
+            const value = argv[index + 1];
+            if (!value || value.startsWith('--')) {
+                throw new Error('Missing value for --replay <file-path>');
+            }
+            replayFile = value;
+            index += 1;
+            continue;
+        }
+
+        if (token === '--speed') {
+            const value = argv[index + 1];
+            if (!value || value.startsWith('--')) {
+                throw new Error('Missing value for --speed <multiplier>');
+            }
+            replaySpeed = parseReplaySpeed(value);
+            index += 1;
+        }
+    }
+
+    if (!replayFile) {
+        return undefined;
+    }
+
+    return {
+        filePath: path.resolve(replayFile),
+        speed: replaySpeed,
+    };
+}
+
+type TrustProxySetting = boolean | number | string | string[];
+
+export function resolveTrustProxySetting(
+    env: NodeJS.ProcessEnv = process.env,
+): TrustProxySetting | undefined {
+    const raw = env.TRUST_PROXY?.trim();
+    if (!raw) {
+        return undefined;
+    }
+
+    const normalized = raw.toLowerCase();
+    if (normalized === 'true') {
+        return true;
+    }
+
+    if (normalized === 'false') {
+        return false;
+    }
+
+    if (/^\d+$/.test(raw)) {
+        return Number.parseInt(raw, 10);
+    }
+
+    if (raw.includes(',')) {
+        const trustedProxies = raw
+            .split(',')
+            .map(segment => segment.trim())
+            .filter(Boolean);
+
+        if (trustedProxies.length > 0) {
+            return trustedProxies;
+        }
+    }
+
+    return raw;
+}
+
 interface SessionRouteDeps {
     store: CourtSessionStore;
     autoRunCourtSession: boolean;
     verdictWindowMs: number;
     sentenceWindowMs: number;
+    recorder: SessionEventRecorderManager;
+    replay?: LoadedReplayRecording;
 }
 
 function createSessionHandler(deps: SessionRouteDeps) {
@@ -130,7 +240,9 @@ function createSessionHandler(deps: SessionRouteDeps) {
             }
 
             const userTopic =
-                typeof req.body?.topic === 'string' ? req.body.topic.trim() : '';
+                typeof req.body?.topic === 'string' ?
+                    req.body.topic.trim()
+                :   '';
 
             if (userTopic && userTopic.length < 10) {
                 return sendError(
@@ -162,7 +274,9 @@ function createSessionHandler(deps: SessionRouteDeps) {
                 : selectedPrompt.caseType; // Use selected prompt's case type if not specified
 
             const participantsInput =
-                Array.isArray(req.body?.participants) ? req.body.participants : AGENT_IDS;
+                Array.isArray(req.body?.participants) ?
+                    req.body.participants
+                :   AGENT_IDS;
 
             const participants = participantsInput.filter(
                 (id: string): id is AgentId => isValidAgent(id),
@@ -185,7 +299,7 @@ function createSessionHandler(deps: SessionRouteDeps) {
                     req.body.sentenceOptions
                         .map((option: unknown) => String(option).trim())
                         .filter(Boolean)
-                : [
+                :   [
                         'Community service in the meme archives',
                         'Banished to the shadow realm',
                         'Mandatory apology haikus',
@@ -222,6 +336,26 @@ function createSessionHandler(deps: SessionRouteDeps) {
                 },
             });
 
+            if (deps.autoRunCourtSession && !deps.replay) {
+                try {
+                    await deps.recorder.start({
+                        sessionId: session.id,
+                        initialEvents: [
+                            createSyntheticEvent({
+                                sessionId: session.id,
+                                type: 'session_created',
+                                payload: { sessionId: session.id },
+                            }),
+                        ],
+                    });
+                } catch (error) {
+                    // eslint-disable-next-line no-console
+                    console.warn(
+                        `[replay] failed to start recorder for session=${session.id}: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                }
+            }
+
             if (deps.autoRunCourtSession) {
                 void runCourtSession(session.id, deps.store);
             }
@@ -229,19 +363,27 @@ function createSessionHandler(deps: SessionRouteDeps) {
             return res.status(201).json({ session });
         } catch (error) {
             const message =
-                error instanceof Error ? error.message : 'Failed to create session';
+                error instanceof Error ?
+                    error.message
+                :   'Failed to create session';
             return sendError(res, 500, 'SESSION_CREATE_FAILED', message);
         }
     };
 }
 
-function createVoteHandler(store: CourtSessionStore, voteSpamGuard: VoteSpamGuard) {
+function createVoteHandler(
+    store: CourtSessionStore,
+    voteSpamGuard: VoteSpamGuard,
+) {
     return async (req: Request, res: Response): Promise<Response> => {
         const voteType = req.body?.type;
+        const voteTypeLabel =
+            typeof voteType === 'string' ? voteType : 'unknown';
         const choice =
             typeof req.body?.choice === 'string' ? req.body.choice.trim() : '';
 
         if (voteType !== 'verdict' && voteType !== 'sentence') {
+            recordVoteRejected(voteTypeLabel, 'invalid_vote_type');
             return sendError(
                 res,
                 400,
@@ -251,7 +393,13 @@ function createVoteHandler(store: CourtSessionStore, voteSpamGuard: VoteSpamGuar
         }
 
         if (!choice) {
-            return sendError(res, 400, 'MISSING_VOTE_CHOICE', 'choice is required');
+            recordVoteRejected(voteTypeLabel, 'missing_vote_choice');
+            return sendError(
+                res,
+                400,
+                'MISSING_VOTE_CHOICE',
+                'choice is required',
+            );
         }
 
         const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
@@ -262,14 +410,16 @@ function createVoteHandler(store: CourtSessionStore, voteSpamGuard: VoteSpamGuar
             choice,
         );
         if (!spamDecision.allowed) {
+            const spamReason = spamDecision.reason ?? 'unknown';
+            recordVoteRejected(voteType, spamReason);
             // eslint-disable-next-line no-console
             console.warn(
-                `[vote-spam] blocked ip=${clientIp} session=${req.params.id} reason=${spamDecision.reason ?? 'unknown'}`,
+                `[vote-spam] blocked ip=${clientIp} session=${req.params.id} reason=${spamReason}`,
             );
             store.emitEvent(req.params.id, 'vote_spam_blocked', {
                 ip: clientIp,
                 voteType,
-                reason: spamDecision.reason ?? 'unknown',
+                reason: spamReason,
                 retryAfterMs: spamDecision.retryAfterMs,
             });
             const code =
@@ -288,12 +438,15 @@ function createVoteHandler(store: CourtSessionStore, voteSpamGuard: VoteSpamGuar
             });
         }
 
+        const voteStartedAt = process.hrtime.bigint();
+
         try {
             const session = await store.castVote({
                 sessionId: req.params.id,
                 voteType,
                 choice,
             });
+            recordVoteCast(voteType, elapsedSecondsSince(voteStartedAt));
 
             return res.json({
                 sessionId: session.id,
@@ -307,6 +460,7 @@ function createVoteHandler(store: CourtSessionStore, voteSpamGuard: VoteSpamGuar
                 fallbackCode: 'VOTE_FAILED',
                 fallbackMessage: 'Failed to cast vote',
             });
+            recordVoteRejected(voteType, mapped.code);
             return sendError(res, mapped.status, mapped.code, mapped.message);
         }
     };
@@ -316,14 +470,20 @@ function createPhaseHandler(store: CourtSessionStore) {
     return async (req: Request, res: Response): Promise<Response> => {
         const phase = req.body?.phase as CourtPhase;
         const durationMs =
-            typeof req.body?.durationMs === 'number' ? req.body.durationMs : undefined;
+            typeof req.body?.durationMs === 'number' ?
+                req.body.durationMs
+            :   undefined;
 
         if (!validPhases.includes(phase)) {
             return sendError(res, 400, 'INVALID_PHASE', 'invalid phase');
         }
 
         try {
-            const session = await store.setPhase(req.params.id, phase, durationMs);
+            const session = await store.setPhase(
+                req.params.id,
+                phase,
+                durationMs,
+            );
             return res.json({ session });
         } catch (error) {
             const mapped = mapSessionMutationError({
@@ -337,18 +497,41 @@ function createPhaseHandler(store: CourtSessionStore) {
     };
 }
 
-function createStreamHandler(store: CourtSessionStore) {
-    return async (req: Request, res: Response): Promise<Response | undefined> => {
+function createStreamHandler(
+    store: CourtSessionStore,
+    replay?: LoadedReplayRecording,
+) {
+    return async (
+        req: Request,
+        res: Response,
+    ): Promise<Response | undefined> => {
         const session = await store.getSession(req.params.id);
         if (!session) {
-            return sendError(res, 404, 'SESSION_NOT_FOUND', 'Session not found');
+            return sendError(
+                res,
+                404,
+                'SESSION_NOT_FOUND',
+                'Session not found',
+            );
         }
 
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
+        const openedAt = recordSseConnectionOpened();
+
         const send = (event: unknown) => {
+            const eventType =
+                (
+                    typeof event === 'object' &&
+                    event !== null &&
+                    'type' in event &&
+                    typeof (event as { type?: unknown }).type === 'string'
+                ) ?
+                    (event as { type: string }).type
+                :   'unknown';
+            recordSseEventSent(eventType);
             res.write(`data: ${JSON.stringify(event)}\n\n`);
         };
 
@@ -363,13 +546,60 @@ function createStreamHandler(store: CourtSessionStore) {
             },
         });
 
-        const unsubscribe = store.subscribe(req.params.id, event => {
-            send(event);
-        });
+        let streamClosed = false;
+        const cleanup: Array<() => void> = [];
 
-        req.on('close', () => {
-            unsubscribe();
-        });
+        if (replay) {
+            let currentTimer: ReturnType<typeof setTimeout> | null = null;
+            let frameIndex = 0;
+            const frames = replay.frames;
+            const startMs = Date.now();
+
+            function scheduleNext(): void {
+                if (streamClosed || frameIndex >= frames.length) return;
+                const frame = frames[frameIndex];
+                const elapsed = Date.now() - startMs;
+                const delay = Math.max(0, frame.delayMs - elapsed);
+                currentTimer = setTimeout(() => {
+                    if (streamClosed) return;
+                    send(
+                        rewriteReplayEventForSession(
+                            frame.event,
+                            req.params.id,
+                        ),
+                    );
+                    frameIndex += 1;
+                    scheduleNext();
+                }, delay);
+            }
+
+            scheduleNext();
+
+            cleanup.push(() => {
+                if (currentTimer !== null) {
+                    clearTimeout(currentTimer);
+                }
+            });
+        } else {
+            const unsubscribe = store.subscribe(req.params.id, event => {
+                send(event);
+            });
+            cleanup.push(unsubscribe);
+        }
+
+        const closeStream = (reason: string) => {
+            if (streamClosed) return;
+            streamClosed = true;
+            for (const dispose of cleanup) {
+                dispose();
+            }
+            recordSseConnectionClosed(openedAt, reason);
+        };
+
+        req.on('close', () => closeStream('request_close'));
+        req.on('aborted', () => closeStream('request_aborted'));
+        res.on('error', () => closeStream('response_error'));
+        res.on('close', () => closeStream('response_close'));
 
         return undefined;
     };
@@ -381,6 +611,14 @@ type ExpressApp = ReturnType<typeof express>;
 const spaIndexLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // limit each IP to 100 requests per windowMs
+});
+
+// Rate limiter for audience interaction endpoints (press/present)
+const audienceInteractionLimiter = rateLimit({
+    windowMs: 10_000, // 10 seconds
+    max: 10, // 10 requests per IP per window
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
 function registerStaticAndSpaRoutes(
@@ -423,10 +661,27 @@ function registerApiRoutes(
         autoRunCourtSession: boolean;
         verdictWindowMs: number;
         sentenceWindowMs: number;
+        recorder: SessionEventRecorderManager;
+        replay?: LoadedReplayRecording;
     },
 ): void {
     app.get('/api/health', (_req, res) => {
         res.json({ ok: true, service: 'juryrigged' });
+    });
+
+    app.get('/api/metrics', async (_req, res) => {
+        try {
+            const metrics = await renderMetrics();
+            res.setHeader('Content-Type', metricsContentType);
+            res.status(200).send(metrics);
+        } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error(
+                '[metrics] failed to render metrics:',
+                error instanceof Error ? error.message : error,
+            );
+            res.status(500).send('failed to render metrics');
+        }
     });
 
     app.get('/api/court/sessions', async (_req, res) => {
@@ -454,6 +709,8 @@ function registerApiRoutes(
             autoRunCourtSession: deps.autoRunCourtSession,
             verdictWindowMs: deps.verdictWindowMs,
             sentenceWindowMs: deps.sentenceWindowMs,
+            recorder: deps.recorder,
+            replay: deps.replay,
         }),
     );
 
@@ -464,12 +721,81 @@ function registerApiRoutes(
 
     app.post('/api/court/sessions/:id/phase', createPhaseHandler(deps.store));
 
-    app.get('/api/court/sessions/:id/stream', createStreamHandler(deps.store));
+    // Phase 7: Audience interaction endpoints (#77)
+    app.post(
+        '/api/court/sessions/:id/press',
+        audienceInteractionLimiter,
+        async (req: Request, res: Response) => {
+            const session = await deps.store.getSession(req.params.id);
+            if (!session) {
+                return sendError(
+                    res,
+                    404,
+                    'SESSION_NOT_FOUND',
+                    'Session not found',
+                );
+            }
+            deps.store.emitEvent(req.params.id, 'render_directive', {
+                directive: {
+                    effect: 'shake',
+                    camera:
+                        session.phase === 'witness_exam' ? 'witness' : 'wide',
+                },
+                phase: session.phase ?? 'witness_exam',
+                emittedAt: new Date().toISOString(),
+            });
+            res.json({ ok: true, action: 'press' });
+        },
+    );
+
+    app.post(
+        '/api/court/sessions/:id/present',
+        audienceInteractionLimiter,
+        async (req: Request, res: Response) => {
+            const session = await deps.store.getSession(req.params.id);
+            if (!session) {
+                return sendError(
+                    res,
+                    404,
+                    'SESSION_NOT_FOUND',
+                    'Session not found',
+                );
+            }
+            const evidenceId =
+                typeof req.body?.evidenceId === 'string' ?
+                    req.body.evidenceId
+                :   undefined;
+            if (!evidenceId) {
+                return sendError(
+                    res,
+                    400,
+                    'MISSING_EVIDENCE_ID',
+                    'evidenceId is required',
+                );
+            }
+            deps.store.emitEvent(req.params.id, 'render_directive', {
+                directive: {
+                    effect: 'take_that',
+                    evidencePresent: evidenceId,
+                    camera: 'evidence',
+                },
+                phase: session.phase ?? 'evidence_reveal',
+                emittedAt: new Date().toISOString(),
+            });
+            res.json({ ok: true, action: 'present', evidenceId });
+        },
+    );
+
+    app.get(
+        '/api/court/sessions/:id/stream',
+        createStreamHandler(deps.store, deps.replay),
+    );
 }
 
 export interface CreateServerAppOptions {
     autoRunCourtSession?: boolean;
     store?: CourtSessionStore;
+    replay?: ReplayRuntimeOptions;
 }
 
 export async function createServerApp(
@@ -480,8 +806,27 @@ export async function createServerApp(
     dispose: () => void;
 }> {
     const app = express();
-    const store = options.store ?? (await createCourtSessionStore());
-    const autoRunCourtSession = options.autoRunCourtSession ?? true;
+
+    const trustProxy = resolveTrustProxySetting();
+    if (trustProxy !== undefined) {
+        app.set('trust proxy', trustProxy);
+    }
+
+    const baseStore = options.store ?? (await createCourtSessionStore());
+    const store = instrumentCourtSessionStore(baseStore);
+    const replay =
+        options.replay ?
+            await loadReplayRecording({
+                filePath: options.replay.filePath,
+                speed: options.replay.speed,
+            })
+        :   undefined;
+
+    const autoRunCourtSession = options.autoRunCourtSession ?? !replay;
+    const recorder = new SessionEventRecorderManager(
+        store,
+        resolveRecordingsDir(),
+    );
 
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -523,6 +868,8 @@ export async function createServerApp(
         autoRunCourtSession,
         verdictWindowMs,
         sentenceWindowMs,
+        recorder,
+        replay,
     });
 
     registerStaticAndSpaRoutes(app, {
@@ -533,6 +880,14 @@ export async function createServerApp(
     const restartPendingIds = await store.recoverInterruptedSessions();
     if (autoRunCourtSession) {
         for (const sessionId of restartPendingIds) {
+            try {
+                await recorder.start({ sessionId });
+            } catch (error) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                    `[replay] failed to start recorder for recovered session=${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+                );
+            }
             void runCourtSession(sessionId, store);
         }
     }
@@ -542,12 +897,17 @@ export async function createServerApp(
         store,
         dispose: () => {
             clearInterval(pruneTimer);
+            void recorder.dispose();
         },
     };
 }
 
 export async function bootstrap(): Promise<void> {
-    const { app } = await createServerApp();
+    const replayLaunch = parseReplayLaunchConfig();
+    const { app } = await createServerApp({
+        replay: replayLaunch,
+        autoRunCourtSession: replayLaunch ? false : undefined,
+    });
 
     const port = Number.parseInt(process.env.PORT ?? '3000', 10);
     app.listen(port, () => {
@@ -555,6 +915,12 @@ export async function bootstrap(): Promise<void> {
         console.log(`JuryRigged running on http://localhost:${port}`);
         // eslint-disable-next-line no-console
         console.log(`Operator Dashboard: http://localhost:${port}/operator`);
+        if (replayLaunch) {
+            // eslint-disable-next-line no-console
+            console.log(
+                `[replay] enabled file=${replayLaunch.filePath} speed=${replayLaunch.speed}x`,
+            );
+        }
     });
 }
 

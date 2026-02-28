@@ -1,8 +1,39 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { SessionMonitor } from './components/SessionMonitor';
 import { useSSE } from './hooks/useSSE';
-import { mapSessionToSnapshot } from './session-snapshot';
+import { applyEventToSnapshot, mapSessionToSnapshot } from './session-snapshot';
 import type { CourtEvent, SessionSnapshot } from './types';
+
+type UnknownRecord = Record<string, unknown>;
+const SESSION_DISCOVERY_INTERVAL_MS = 5_000;
+
+function asRecord(value: unknown): UnknownRecord {
+    return (
+            typeof value === 'object' && value !== null && !Array.isArray(value)
+        ) ?
+            (value as UnknownRecord)
+        :   {};
+}
+
+function asString(value: unknown): string | null {
+    return typeof value === 'string' ? value : null;
+}
+
+function resolvePreferredSessionId(response: unknown): string | null {
+    const payload = asRecord(response);
+    const sessions =
+        Array.isArray(payload.sessions) ? payload.sessions : ([] as unknown[]);
+
+    if (sessions.length === 0) {
+        return null;
+    }
+
+    const running = sessions.find(
+        candidate => asRecord(candidate).status === 'running',
+    );
+    const selected = asRecord(running ?? sessions[0]);
+    return asString(selected.id) ?? asString(selected.sessionId);
+}
 
 type DashboardTabId = 'monitor' | 'moderation' | 'controls' | 'analytics';
 
@@ -71,6 +102,7 @@ function App() {
 
     const handleSSEEvent = useCallback((event: CourtEvent) => {
         setEvents(prev => [...prev, event]);
+        setSessionSnapshot(current => applyEventToSnapshot(current, event));
     }, []);
 
     const handleSSESnapshot = useCallback(
@@ -100,43 +132,40 @@ function App() {
     useEffect(() => {
         let cancelled = false;
 
-        // Fetch current session on mount
-        fetch('/api/court/sessions')
-            .then(res => {
+        const syncSessionId = async () => {
+            try {
+                const res = await fetch('/api/court/sessions');
                 if (!res.ok) {
                     throw new Error(`Unexpected status ${res.status}`);
                 }
-                return res.json();
-            })
-            .then(sessionsResponse => {
+
+                const sessionsResponse = await res.json();
                 if (cancelled) {
                     return;
                 }
 
-                let id: string | null = null;
+                const nextSessionId =
+                    resolvePreferredSessionId(sessionsResponse);
+                setSessionId(current =>
+                    current === nextSessionId ? current : nextSessionId,
+                );
+            } catch (err) {
+                console.error('Failed to fetch session:', err);
+            }
+        };
 
-                if (
-                    Array.isArray(sessionsResponse.sessions) &&
-                    sessionsResponse.sessions.length > 0
-                ) {
-                    const first = sessionsResponse.sessions[0] as
-                        | { id?: string; sessionId?: string }
-                        | undefined;
-                    id = first?.id ?? first?.sessionId ?? null;
-                }
+        void syncSessionId().finally(() => {
+            if (!cancelled) {
+                setSessionLookupLoading(false);
+            }
+        });
 
-                if (id) {
-                    setSessionId(id);
-                }
-            })
-            .catch(err => console.error('Failed to fetch session:', err))
-            .finally(() => {
-                if (!cancelled) {
-                    setSessionLookupLoading(false);
-                }
-            });
+        const intervalId = setInterval(() => {
+            void syncSessionId();
+        }, SESSION_DISCOVERY_INTERVAL_MS);
 
         return () => {
+            clearInterval(intervalId);
             cancelled = true;
         };
     }, []);

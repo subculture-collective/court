@@ -8,6 +8,11 @@ import {
     type BroadcastAdapter,
 } from '../broadcast/adapter.js';
 import {
+    createTwitchAdapter,
+    wireTwitchToSession,
+    type TwitchAdapter,
+} from '../twitch/adapter.js';
+import {
     applyWitnessCap,
     estimateTokens,
     resolveWitnessCapConfig,
@@ -25,6 +30,10 @@ import type {
     CourtRole,
     CourtSession,
     CourtTurn,
+    RenderDirective,
+    CameraPreset,
+    CaseFile,
+    WitnessStatement,
 } from '../types.js';
 import type { CourtSessionStore } from '../store/session-store.js';
 import { buildCourtSystemPrompt } from './personas.js';
@@ -62,6 +71,72 @@ const MODERATION_REDIRECT_DIALOGUE =
     'The court will strike that from the record. Please keep testimony appropriate and on topic.';
 
 const broadcastBySession = new Map<string, BroadcastAdapter>();
+
+// ---------------------------------------------------------------------------
+// Phase 7: Render directive inference (#70)
+// ---------------------------------------------------------------------------
+
+const ROLE_CAMERA_MAP: Record<CourtRole, CameraPreset> = {
+    judge: 'judge',
+    prosecutor: 'prosecution',
+    defense: 'defense',
+    witness_1: 'witness',
+    witness_2: 'witness',
+    witness_3: 'witness',
+    bailiff: 'wide',
+};
+
+function inferRenderDirective(
+    role: CourtRole,
+    phase: CourtPhase,
+    dialogue: string,
+): RenderDirective {
+    const directive: RenderDirective = {
+        camera: ROLE_CAMERA_MAP[role] ?? 'wide',
+        poses: { [role]: 'talk' } as RenderDirective['poses'],
+    };
+
+    // Detect exclamatory dialogue for effects (match with or without trailing !)
+    const upper = dialogue.toUpperCase();
+    if (/\bOBJECTION[!.]?/.test(upper)) {
+        directive.effect = 'objection';
+        directive.poses = { [role]: 'point' } as RenderDirective['poses'];
+    } else if (/\bHOLD IT[!.]?/.test(upper)) {
+        directive.effect = 'hold_it';
+        directive.poses = { [role]: 'slam' } as RenderDirective['poses'];
+    } else if (/\bTAKE THAT[!.]?/.test(upper)) {
+        directive.effect = 'take_that';
+        directive.poses = { [role]: 'point' } as RenderDirective['poses'];
+    }
+
+    // Phase-specific camera overrides
+    if (phase === 'verdict_vote' || phase === 'final_ruling') {
+        directive.camera = 'verdict';
+    } else if (phase === 'evidence_reveal') {
+        directive.camera = 'evidence';
+    }
+
+    return directive;
+}
+
+function emitRenderDirective(
+    store: CourtSessionStore,
+    session: CourtSession,
+    directive: RenderDirective,
+    turnId?: string,
+): void {
+    session.metadata.lastRenderDirective = directive;
+    store
+        .patchMetadata(session.id, { lastRenderDirective: directive })
+        // eslint-disable-next-line no-console
+        .catch(err => console.error('[orchestrator] patchMetadata render_directive failed', err));
+    store.emitEvent(session.id, 'render_directive', {
+        directive,
+        turnId,
+        phase: session.phase,
+        emittedAt: new Date().toISOString(),
+    });
+}
 
 type BudgetResolution = {
     requestedMaxTokens: number;
@@ -212,7 +287,8 @@ async function generateTurn(input: {
     }
 
     const moderation = moderateContent(dialogue);
-    const activeBroadcast = input.broadcast ?? broadcastBySession.get(session.id);
+    const activeBroadcast =
+        input.broadcast ?? broadcastBySession.get(session.id);
 
     if (moderation.flagged) {
         await handleFlaggedModeration({
@@ -237,6 +313,17 @@ async function generateTurn(input: {
     });
 
     appendTurnToSession(session, turn);
+
+    // Phase 7: Infer and emit render directive for this turn
+    const renderDirective = inferRenderDirective(
+        role,
+        session.phase,
+        moderation.sanitized,
+    );
+    emitRenderDirective(store, session, renderDirective, turn.id);
+
+    // Phase 7: Emit witness statement if applicable
+    emitWitnessStatement(store, session, turn);
 
     store.emitEvent(session.id, 'token_budget_applied', {
         turnId: turn.id,
@@ -304,6 +391,104 @@ function createGenerateBudgetedTurn(input: {
         });
 }
 
+// ---------------------------------------------------------------------------
+// Phase 7: Structured case file (#67)
+// ---------------------------------------------------------------------------
+
+function buildCaseFile(session: CourtSession): CaseFile {
+    const meta = session.metadata;
+    const assignments = meta.roleAssignments;
+
+    const witnesses: CaseFile['witnesses'] = [];
+    for (const wRole of [
+        'witness_1',
+        'witness_2',
+        'witness_3',
+    ] as CourtRole[]) {
+        const agentId = (assignments as unknown as Record<string, AgentId>)[
+            wRole
+        ];
+        if (agentId) {
+            const agent = AGENTS[agentId];
+            witnesses.push({
+                role: wRole,
+                agentId,
+                displayName: agent?.displayName ?? agentId,
+                bio: agent?.description ?? 'Court witness',
+            });
+        }
+    }
+
+    const evidenceItems: CaseFile['evidence'] = (meta.evidenceCards ?? []).map(
+        (card, i) => ({
+            id: card.id,
+            label: `Evidence ${i + 1}`,
+            description: card.text,
+            revealPhase: 'evidence_reveal' as CourtPhase,
+        }),
+    );
+
+    return {
+        title: session.topic,
+        genre: meta.currentGenre ?? 'absurd_civil',
+        caseType: meta.caseType,
+        synopsis: session.topic,
+        charges:
+            meta.caseType === 'criminal' ?
+                ['As stated in case prompt']
+            :   ['Damages as alleged'],
+        witnesses,
+        evidence: evidenceItems,
+        sentenceOptions: meta.sentenceOptions,
+    };
+}
+
+function emitCaseFile(store: CourtSessionStore, session: CourtSession): void {
+    const caseFile = buildCaseFile(session);
+    store
+        .patchMetadata(session.id, { caseFile })
+        // eslint-disable-next-line no-console
+        .catch(err => console.error('[orchestrator] patchMetadata case_file failed', err));
+    store.emitEvent(session.id, 'case_file_generated', {
+        caseFile,
+        sessionId: session.id,
+        generatedAt: new Date().toISOString(),
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Witness statement emission (#75)
+// ---------------------------------------------------------------------------
+
+function emitWitnessStatement(
+    store: CourtSessionStore,
+    session: CourtSession,
+    turn: CourtTurn,
+): void {
+    if (!turn.role.startsWith('witness_')) return;
+
+    const statement: WitnessStatement = {
+        witnessRole: turn.role,
+        agentId: turn.speaker,
+        statementText: turn.dialogue,
+        issuedAt: new Date().toISOString(),
+    };
+
+    const existing = session.metadata.witnessStatements ?? [];
+    const witnessStatements = [...existing, statement];
+    session.metadata.witnessStatements = witnessStatements;
+    store
+        .patchMetadata(session.id, { witnessStatements })
+        // eslint-disable-next-line no-console
+        .catch(err => console.error('[orchestrator] patchMetadata witness_statement failed', err));
+
+    store.emitEvent(session.id, 'witness_statement', {
+        statement,
+        phase: session.phase,
+        emittedAt: new Date().toISOString(),
+    });
+}
+
 export async function runCourtSession(
     sessionId: string,
     store: CourtSessionStore,
@@ -313,6 +498,13 @@ export async function runCourtSession(
     const tts = options.ttsAdapter ?? createTTSAdapterFromEnv();
     const broadcast = await createBroadcastAdapterFromEnv(); // Phase 3: Initialize broadcast adapter
     broadcastBySession.set(session.id, broadcast);
+
+    // Phase 7: Generate and emit structured case file
+    emitCaseFile(store, session);
+
+    // Phase 7: Wire Twitch integration
+    const twitchAdapter = createTwitchAdapter();
+    void wireTwitchToSession(twitchAdapter, store, session.id);
     const pause = options.sleepFn ?? sleep;
     const witnessCapConfig = resolveWitnessCapConfig();
     const roleTokenBudgetConfig = resolveRoleTokenBudgetConfig();
@@ -388,6 +580,7 @@ export async function runCourtSession(
         await store.failSession(session.id, message);
     } finally {
         broadcastBySession.delete(session.id);
+        twitchAdapter.disconnect();
         // eslint-disable-next-line no-console
         console.info(
             `[tts] session=${session.id} provider=${tts.provider} success=${ttsMetrics.success} failure=${ttsMetrics.failure}`,

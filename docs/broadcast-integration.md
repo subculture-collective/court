@@ -301,6 +301,74 @@ All broadcast hooks emit telemetry events via SSE:
 
 ---
 
+## Twitch Chat Integration (Phase 7)
+
+> **Phase 7 Feature**: Audience interaction through Twitch chat commands and channel points.
+
+### Overview
+
+The Twitch adapter reads chat messages in a configured channel and forwards recognised commands to the session orchestrator. When Twitch credentials are absent, the adapter is a no-op — no errors, no connections attempted.
+
+### Supported Commands
+
+| Command                   | Effect                                                                |
+| ------------------------- | --------------------------------------------------------------------- |
+| `!press`                  | Audience presses the current witness — emits a shake render directive |
+| `!present <evidence_id>`  | Presents evidence — emits a `take_that` render directive              |
+| `!objection`              | Increments the audience objection counter                             |
+
+### Configuration
+
+Add to `.env`:
+
+```bash
+# Twitch integration (Phase 7)
+TWITCH_CHANNEL=your_channel_name
+TWITCH_BOT_TOKEN=oauth:your_bot_token
+TWITCH_CLIENT_ID=your_client_id
+```
+
+When any of these three variables is empty or missing, the adapter defaults to noop mode.
+
+### API Endpoints
+
+The audience interaction also works via HTTP (for non-Twitch integrations):
+
+- `POST /api/court/sessions/:id/press` — press the current witness
+- `POST /api/court/sessions/:id/present` — present evidence (`{ "evidenceId": "..." }`)
+
+Both endpoints emit `render_directive` SSE events consumed by the overlay renderer.
+
+### Architecture
+
+```
+Twitch IRC ──► TwitchAdapter.onCommand() ──► wireTwitchToSession()
+                                                  │
+                                                  ├──► store.emitEvent('objection_count_changed')
+                                                  ├──► store.emitEvent('render_directive')
+                                                  └──► console.info (press/present logging)
+
+HTTP POST /press ──► server handler ──► store.emitEvent('render_directive')
+HTTP POST /present ──► server handler ──► store.emitEvent('render_directive')
+```
+
+### Fail-Safe Behavior
+
+The same non-blocking isolation guarantees apply:
+
+1. Twitch adapter failures never crash the session
+2. Missing credentials default to noop (no connection attempt)
+3. Malformed commands are silently ignored
+4. Command parsing is strict: only `!press`, `!present`, `!objection` are recognised
+
+### Current Limitations
+
+- IRC socket connection is deferred (placeholder-first); the adapter logs commands but does not connect to Twitch IRC yet
+- Channel-point redemption mapping (via EventSub) is planned for a future iteration
+- Per-loop audience action rate limits are enforced at the API layer but not yet at the Twitch command layer
+
+---
+
 ## Advanced Configuration
 
 ### Custom Adapter Implementation

@@ -33,14 +33,14 @@ cp .env.example .env
 
 Key variables:
 
-| Variable                 | Default                              | Description |
-|--------------------------|--------------------------------------|-------------|
-| `OPENROUTER_API_KEY`     | *(empty)*                            | Set to enable real LLM calls. Leave empty for deterministic mock mode. |
-| `LLM_MODEL`              | `deepseek/deepseek-chat-v3-0324:free`| OpenRouter model identifier. |
-| `PORT`                   | `3001`                               | Port the HTTP server listens on. |
-| `DATABASE_URL`           | *(empty)*                            | Postgres connection string. Omit for in-memory mode. |
-| `VERDICT_VOTE_WINDOW_MS` | `20000`                              | Duration of the verdict poll in milliseconds. |
-| `SENTENCE_VOTE_WINDOW_MS`| `20000`                              | Duration of the sentence poll in milliseconds. |
+| Variable                  | Default                               | Description                                                            |
+| ------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`      | _(empty)_                             | Set to enable real LLM calls. Leave empty for deterministic mock mode. |
+| `LLM_MODEL`               | `deepseek/deepseek-chat-v3-0324:free` | OpenRouter model identifier.                                           |
+| `PORT`                    | `3001`                                | Port the HTTP server listens on.                                       |
+| `DATABASE_URL`            | _(empty)_                             | Postgres connection string. Omit for in-memory mode.                   |
+| `VERDICT_VOTE_WINDOW_MS`  | `20000`                               | Duration of the verdict poll in milliseconds.                          |
+| `SENTENCE_VOTE_WINDOW_MS` | `20000`                               | Duration of the sentence poll in milliseconds.                         |
 
 ### 1.3 (Optional) Run database migrations
 
@@ -89,7 +89,7 @@ To expose Postgres to the host (e.g., for `psql` inspection), add a `ports` entr
 
 ```yaml
 ports:
-  - "5433:5432"
+    - '5433:5432'
 ```
 
 ---
@@ -203,14 +203,14 @@ To test with very short windows (e.g., smoke tests): set `VERDICT_VOTE_WINDOW_MS
 
 The server logs to `stdout`/`stderr`. Key log prefixes:
 
-| Prefix              | Meaning |
-|---------------------|---------|
-| `[moderation]`      | A turn was flagged and redacted. Includes session ID, speaker, and reason codes. |
-| `[vote-spam]`       | A vote was blocked by the rate limiter. Includes IP and session ID. |
+| Prefix         | Meaning                                                                          |
+| -------------- | -------------------------------------------------------------------------------- |
+| `[moderation]` | A turn was flagged and redacted. Includes session ID, speaker, and reason codes. |
+| `[vote-spam]`  | A vote was blocked by the rate limiter. Includes IP and session ID.              |
 
 All session events are also emitted to the SSE stream (see [api.md](./api.md#sse-event-contracts)).
 
-There is no built-in metrics endpoint. For production observability, pipe logs to a structured logging system or attach to the SSE stream.
+A Prometheus-compatible metrics endpoint is available at `GET /api/metrics`. It exposes session lifecycle counters, phase transition totals, vote latency histograms, SSE connection gauges, and default Node.js process metrics (prefixed `juryrigged_`). For production observability, scrape `/api/metrics` with Prometheus or a compatible collector, and pipe logs to a structured logging system.
 
 ---
 
@@ -247,20 +247,27 @@ Use this section during real shows. Dashboard/alert configuration details are do
 ### 9.1 Startup checklist (T-30 minutes to T-5 minutes before show start)
 
 1. **Environment sanity**
-  - Confirm `OPENROUTER_API_KEY` present for live mode (or `LLM_MOCK=true` for rehearsal).
-  - Confirm vote windows and token/recap knobs are set for this show.
+
+- Confirm `OPENROUTER_API_KEY` present for live mode (or `LLM_MOCK=true` for rehearsal).
+- Confirm vote windows and token/recap knobs are set for this show.
+
 2. **System readiness**
-  - Confirm `GET /api/health` is green.
-  - Confirm API health probe (hard-down threshold from `docs/ops-runbook.md` Section 3) is passing.
+
+- Confirm `GET /api/health` is green.
+- Confirm API health probe (hard-down threshold from `docs/ops-runbook.md` Section 3) is passing.
+
 3. **Dry session smoke**
-  - Create one session and verify SSE stream connects.
-  - Confirm metric movement in:
+
+- Create one session and verify SSE stream connects.
+- Confirm metric movement in:
     - SLI A — Session completion rate (`docs/ops-runbook.md` Section 2)
     - SLI B — Vote API latency p95 (`docs/ops-runbook.md` Section 2)
     - SLI C — Moderation events per 15m (`docs/ops-runbook.md` Section 2)
+
 4. **Alert routing check**
-  - Validate pager/notification channel receives one test alert payload.
-  - Verify alert payload contains runbook link back to this document.
+
+- Validate pager/notification channel receives one test alert payload.
+- Verify alert payload contains runbook link back to this document.
 
 ### 9.2 Live show checklist (continuous)
 
@@ -333,8 +340,10 @@ Use when fairness, safety, or service stability cannot be restored quickly.
 
 1. Announce mistrial to viewers in the broadcast layer.
 2. Move session to closure quickly using **forward-only** phase steps via `POST /api/court/sessions/:id/phase`.
-  - If in `witness_exam`, move to `closings`.
-  - Then advance through `verdict_vote` → `sentence_vote` → `final_ruling` with short durations if needed.
+
+- If in `witness_exam`, move to `closings`.
+- Then advance through `verdict_vote` → `sentence_vote` → `final_ruling` with short durations if needed.
+
 3. Record incident details and open retrospective action items.
 
 ### 11.2 Emergency recap procedure
@@ -363,12 +372,12 @@ Workaround:
 
 ## 12 — Dashboard and alert reference map
 
-| Operational concern | Dashboard panel ID | Alert ID |
-| --- | --- | --- |
-| Session completion health | `session_completion_rate_15m` | `session_completion_rate_low` |
-| Vote API responsiveness | `vote_latency_p95_10m` | `vote_latency_high` |
-| Moderation intensity | `moderation_events_15m` | `moderation_spike` |
-| API + stream liveliness | `stream_and_api_health` | `api_hard_down`, `stream_connectivity_degraded` |
+| Operational concern       | Dashboard panel ID            | Alert ID                                        |
+| ------------------------- | ----------------------------- | ----------------------------------------------- |
+| Session completion health | `session_completion_rate_15m` | `session_completion_rate_low`                   |
+| Vote API responsiveness   | `vote_latency_p95_10m`        | `vote_latency_high`                             |
+| Moderation intensity      | `moderation_events_15m`       | `moderation_spike`                              |
+| API + stream liveliness   | `stream_and_api_health`       | `api_hard_down`, `stream_connectivity_degraded` |
 
 ---
 
