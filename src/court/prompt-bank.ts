@@ -12,6 +12,7 @@ import type {
     ModerationReasonCode,
 } from '../types.js';
 import { moderateContent } from '../moderation/content-filter.js';
+import { logger } from '../logger.js';
 
 // ---------------------------------------------------------------------------
 // Prompt Bank
@@ -183,7 +184,10 @@ function selectWithGenreRotation(rotationInput: {
     );
 
     if (availablePrompts.length === 0) {
-        console.warn(rotationInput.depletedPoolWarning);
+        logger.warn(rotationInput.depletedPoolWarning, {
+            minDistance: rotationInput.minDistance,
+            historyLength: rotationInput.genreHistory.length,
+        });
         availablePrompts = rotationInput.candidates;
     }
 
@@ -212,7 +216,14 @@ export function selectNextPrompt(
     activeGenres?: GenreTag[],
     minDistance: number = DEFAULT_ROTATION_CONFIG.minDistance,
 ): PromptBankEntry {
-    return selectNextSafePrompt(genreHistory, activeGenres, minDistance, () => true);
+    const candidates = getActivePromptCandidates(activeGenres);
+
+    return selectWithGenreRotation({
+        candidates,
+        genreHistory,
+        minDistance,
+        depletedPoolWarning: `[prompt-bank] All genres recently used (history=${genreHistory.join(',')}). Allowing any active genre.`,
+    });
 }
 
 export interface PromptSafetyResult {

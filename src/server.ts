@@ -908,7 +908,11 @@ const isMainModule = (() => {
 
 if (isMainModule) {
     bootstrap().catch(error => {
-        logger.error('Bootstrap failed', { error });
+        const context =
+            error instanceof Error
+                ? { message: error.message, stack: error.stack }
+                : { error };
+        logger.error('Bootstrap failed', context);
         process.exit(1);
     });
 }
