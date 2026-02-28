@@ -1,4 +1,5 @@
 import type { CourtRole } from '../types.js';
+import { parsePositiveFloat, parsePositiveInt } from '../parse-env.js';
 
 export interface RoleTokenBudgetConfig {
     defaultMaxTokens: number;
@@ -17,6 +18,12 @@ export interface RoleTokenBudgetResolution {
     source: 'env_role_cap' | 'requested';
 }
 
+// Token limits per role, sized for dialogue pacing:
+// - Judge/attorneys at 220 to allow rulings and cross-examination depth
+// - Witnesses at 160 to keep testimony punchy (3 sentences target)
+// - Bailiff at 120 for short announcements
+// - Default 260 used when no role-specific limit applies
+// - Cost at $0.002/1k tokens based on OpenRouter DeepSeek pricing
 const DEFAULT_ROLE_BUDGET_CONFIG: RoleTokenBudgetConfig = {
     defaultMaxTokens: 260,
     judgeMaxTokens: 220,
@@ -26,21 +33,6 @@ const DEFAULT_ROLE_BUDGET_CONFIG: RoleTokenBudgetConfig = {
     bailiffMaxTokens: 120,
     costPer1kTokensUsd: 0.002,
 };
-
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-    if (!value) return fallback;
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function parsePositiveFloat(
-    value: string | undefined,
-    fallback: number,
-): number {
-    if (!value) return fallback;
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 export function resolveRoleTokenBudgetConfig(
     env: NodeJS.ProcessEnv = process.env,

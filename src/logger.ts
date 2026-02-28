@@ -77,7 +77,9 @@ export class Logger {
         this.write('error', message, context);
     }
 
-    // Convenience method to create a child logger with base context
+    // Create a child logger that merges baseContext into every log entry.
+    // Uses Object.create for lightweight cloning — avoids a full class
+    // instantiation while letting setLevel() work independently on the child.
     child(baseContext: LogContext): Logger {
         const parent = this;
         const childLogger = Object.create(Logger.prototype) as Logger;

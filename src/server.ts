@@ -11,6 +11,7 @@ import {
     DEFAULT_ROTATION_CONFIG,
 } from './court/prompt-bank.js';
 import { moderateContent } from './moderation/content-filter.js';
+import { parsePositiveInt } from './parse-env.js';
 import {
     CourtNotFoundError,
     CourtValidationError,
@@ -29,6 +30,7 @@ import {
     recordVoteRejected,
     renderMetrics,
 } from './metrics.js';
+import { logger } from './logger.js';
 import {
     createSyntheticEvent,
     loadReplayRecording,
@@ -103,11 +105,6 @@ function mapSessionMutationError(input: {
         code: input.fallbackCode,
         message,
     };
-}
-
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-    const parsed = Number.parseInt(value ?? '', 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export interface ReplayRuntimeOptions {
@@ -226,10 +223,9 @@ function createSessionHandler(deps: SessionRouteDeps) {
             try {
                 selectedPrompt = selectNextSafePrompt(genreHistory);
             } catch (error) {
-                // eslint-disable-next-line no-console
-                console.error(
+                logger.error(
                     '[server] selectNextSafePrompt failed:',
-                    error instanceof Error ? error.message : error,
+                    { error: error instanceof Error ? error.message : error },
                 );
                 return sendError(
                     res,
@@ -349,8 +345,7 @@ function createSessionHandler(deps: SessionRouteDeps) {
                         ],
                     });
                 } catch (error) {
-                    // eslint-disable-next-line no-console
-                    console.warn(
+                    logger.warn(
                         `[replay] failed to start recorder for session=${session.id}: ${error instanceof Error ? error.message : String(error)}`,
                     );
                 }
@@ -412,8 +407,7 @@ function createVoteHandler(
         if (!spamDecision.allowed) {
             const spamReason = spamDecision.reason ?? 'unknown';
             recordVoteRejected(voteType, spamReason);
-            // eslint-disable-next-line no-console
-            console.warn(
+            logger.warn(
                 `[vote-spam] blocked ip=${clientIp} session=${req.params.id} reason=${spamReason}`,
             );
             store.emitEvent(req.params.id, 'vote_spam_blocked', {
@@ -662,10 +656,9 @@ function registerApiRoutes(
             res.setHeader('Content-Type', metricsContentType);
             res.status(200).send(metrics);
         } catch (error) {
-            // eslint-disable-next-line no-console
-            console.error(
+            logger.error(
                 '[metrics] failed to render metrics:',
-                error instanceof Error ? error.message : error,
+                { error: error instanceof Error ? error.message : error },
             );
             res.status(500).send('failed to render metrics');
         }
@@ -870,8 +863,7 @@ export async function createServerApp(
             try {
                 await recorder.start({ sessionId });
             } catch (error) {
-                // eslint-disable-next-line no-console
-                console.warn(
+                logger.warn(
                     `[replay] failed to start recorder for recovered session=${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
                 );
             }
@@ -898,13 +890,10 @@ export async function bootstrap(): Promise<void> {
 
     const port = Number.parseInt(process.env.PORT ?? '3000', 10);
     app.listen(port, () => {
-        // eslint-disable-next-line no-console
-        console.log(`JuryRigged running on http://localhost:${port}`);
-        // eslint-disable-next-line no-console
-        console.log(`Operator Dashboard: http://localhost:${port}/operator`);
+        logger.info(`JuryRigged running on http://localhost:${port}`);
+        logger.info(`Operator Dashboard: http://localhost:${port}/operator`);
         if (replayLaunch) {
-            // eslint-disable-next-line no-console
-            console.log(
+            logger.info(
                 `[replay] enabled file=${replayLaunch.filePath} speed=${replayLaunch.speed}x`,
             );
         }
@@ -919,8 +908,7 @@ const isMainModule = (() => {
 
 if (isMainModule) {
     bootstrap().catch(error => {
-        // eslint-disable-next-line no-console
-        console.error(error);
+        logger.error('Bootstrap failed', { error });
         process.exit(1);
     });
 }

@@ -4,48 +4,23 @@ import type {
     TranscriptEntry,
     VoteCount,
 } from './types';
+import {
+    asNumber,
+    asPositiveNumber,
+    asRecord,
+    asString,
+    asStringArray,
+    isRecord,
+} from './utils/payload-guards';
+import type { UnknownRecord } from './utils/payload-guards';
 
 const DEFAULT_MAX_WITNESS_STATEMENTS = 3;
 const DEFAULT_RECAP_INTERVAL = 2;
-
-type UnknownRecord = Record<string, unknown>;
 
 interface SessionSnapshotInput {
     session: unknown;
     turns?: unknown;
     recapTurnIds?: unknown;
-}
-
-function isRecord(value: unknown): value is UnknownRecord {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asRecord(value: unknown): UnknownRecord {
-    return isRecord(value) ? value : {};
-}
-
-function asString(value: unknown): string | null {
-    return typeof value === 'string' ? value : null;
-}
-
-function asNumber(value: unknown, fallback = 0): number {
-    return typeof value === 'number' && Number.isFinite(value) ?
-            value
-        :   fallback;
-}
-
-function asPositiveNumber(value: unknown, fallback: number): number {
-    return typeof value === 'number' && Number.isFinite(value) && value > 0 ?
-            value
-        :   fallback;
-}
-
-function asStringArray(value: unknown): string[] {
-    if (!Array.isArray(value)) {
-        return [];
-    }
-
-    return value.filter((item): item is string => typeof item === 'string');
 }
 
 function buildTranscript(

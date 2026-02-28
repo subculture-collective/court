@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { CourtEvent, SSEMessage } from '../types';
 
-const RECONNECT_DELAY_MS = 3000;
+const RECONNECT_BASE_MS = 3_000;
+const RECONNECT_MAX_MS = 30_000;
+const MAX_RETRIES = 10;
 
 export function useSSE(
     sessionId: string | null,
@@ -12,6 +14,7 @@ export function useSSE(
     const [error, setError] = useState<string | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const retriesRef = useRef(0);
 
     const connect = useCallback(() => {
         if (eventSourceRef.current || !sessionId) {
@@ -27,15 +30,14 @@ export function useSSE(
             es.onopen = () => {
                 setConnected(true);
                 setError(null);
+                retriesRef.current = 0;
                 console.log('SSE connected');
             };
 
             es.onerror = err => {
                 console.error('SSE error:', err);
                 setConnected(false);
-                setError('Connection lost. Reconnecting...');
 
-                // Clean up and schedule reconnect
                 es.close();
                 eventSourceRef.current = null;
 
@@ -43,9 +45,21 @@ export function useSSE(
                     clearTimeout(reconnectTimeoutRef.current);
                 }
 
+                if (retriesRef.current >= MAX_RETRIES) {
+                    setError('Connection lost. Max retries reached.');
+                    return;
+                }
+
+                const delay = Math.min(
+                    RECONNECT_BASE_MS * 2 ** retriesRef.current,
+                    RECONNECT_MAX_MS,
+                );
+                retriesRef.current += 1;
+                setError(`Connection lost. Reconnecting in ${Math.round(delay / 1000)}s...`);
+
                 reconnectTimeoutRef.current = setTimeout(() => {
                     connect();
-                }, RECONNECT_DELAY_MS);
+                }, delay);
             };
 
             es.onmessage = e => {

@@ -1,5 +1,6 @@
 import { AGENTS } from '../agents.js';
 import { llmGenerate, sanitizeDialogue } from '../llm/client.js';
+import { logger } from '../logger.js';
 import { moderateContent } from '../moderation/content-filter.js';
 import { createTTSAdapterFromEnv, type TTSAdapter } from '../tts/adapter.js';
 import {
@@ -175,8 +176,7 @@ async function handleFlaggedModeration(input: {
     moderationReasons: string[];
     activeBroadcast?: BroadcastAdapter;
 }): Promise<void> {
-    // eslint-disable-next-line no-console
-    console.warn(
+    logger.warn(
         `[moderation] content flagged session=${input.session.id} speaker=${input.speaker} reasons=${input.moderationReasons.join(',')}`,
     );
 

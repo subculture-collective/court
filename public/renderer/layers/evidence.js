@@ -6,13 +6,18 @@
  * scales up, flashes, then settles back to the evidence tray.
  */
 
-const EVIDENCE_TRAY_ALPHA = 0.85;
+import {
+    EVIDENCE_CARD_BG,
+    EVIDENCE_CARD_BORDER,
+    EVIDENCE_CARD_ACTIVE_BORDER,
+    EVIDENCE_ID_TEXT,
+    EVIDENCE_CONTENT_TEXT,
+    EVIDENCE_TRAY_ALPHA,
+} from '../theme.js';
+
 const EVIDENCE_CARD_WIDTH = 140;
 const EVIDENCE_CARD_HEIGHT = 80;
 const EVIDENCE_CARD_GAP = 8;
-const EVIDENCE_CARD_BG = 0x1e293b;
-const EVIDENCE_CARD_BORDER = 0x475569;
-const EVIDENCE_CARD_ACTIVE_BORDER = 0xfbbf24;
 const PRESENT_ANIMATION_MS = 900;
 
 /**
@@ -65,7 +70,7 @@ export function initEvidence(stage) {
         const idLabel = new PIXI.Text({
             text: `#${evidence.id}`,
             style: {
-                fill: 0x94a3b8,
+                fill: EVIDENCE_ID_TEXT,
                 fontSize: 9,
                 fontFamily: 'monospace',
             },
@@ -76,7 +81,7 @@ export function initEvidence(stage) {
         const textLabel = new PIXI.Text({
             text: evidence.text.length > 60 ? evidence.text.slice(0, 57) + '…' : evidence.text,
             style: {
-                fill: 0xe2e8f0,
+                fill: EVIDENCE_CONTENT_TEXT,
                 fontSize: 10,
                 fontFamily: 'Inter, system-ui, sans-serif',
                 wordWrap: true,

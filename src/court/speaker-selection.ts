@@ -35,12 +35,17 @@ export function selectNextSpeaker(context: {
         speakCounts[turn.speaker] = (speakCounts[turn.speaker] ?? 0) + 1;
     }
 
+    // Tuning: how much having spoken recently reduces selection probability
+    const RECENCY_PENALTY_WEIGHT = 0.5;
+    // Tuning: random jitter range to prevent deterministic speaker ordering
+    const SELECTION_JITTER_RANGE = 0.4;
+
     const weights = participants.map(agent => {
         if (agent === lastSpeaker) return 0;
 
         let weight = 1;
-        weight -= recencyPenalty(agent, speakCounts, history.length) * 0.5;
-        weight += Math.random() * 0.4 - 0.2;
+        weight -= recencyPenalty(agent, speakCounts, history.length) * RECENCY_PENALTY_WEIGHT;
+        weight += Math.random() * SELECTION_JITTER_RANGE - SELECTION_JITTER_RANGE / 2;
 
         return Math.max(0, weight);
     });

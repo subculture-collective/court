@@ -2,12 +2,19 @@
   "scope": [
     "src/**/*.ts",
     "dashboard/src/**/*.{ts,tsx}",
-    "public/app.js"
+    "public/**/*.js",
+    "public/renderer/**/*.js"
   ],
-  "generatedAt": "2026-02-27",
-  "resolved": [
+  "generatedAt": "2025-01-28",
+  "summary": {
+    "high": 7,
+    "medium": 14,
+    "low": 6,
+    "total": 27
+  },
+  "issues": [
     {
-      "id": "CC-003",
+      "id": "CC-001",
       "summary": "public app stream handling now uses dispatch-map handlers"
     },
     {

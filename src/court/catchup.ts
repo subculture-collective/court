@@ -1,6 +1,11 @@
 import type { CourtPhase, CourtTurn } from '../types.js';
 
+// Max characters for the catch-up summary — fits comfortably in a
+// subtitle banner at standard stream resolution (960×540).
 export const DEFAULT_CASE_SO_FAR_MAX_CHARS = 220;
+
+// Number of recent turns to stitch when no recap is available
+const RECENT_TURNS_COUNT = 3;
 
 export interface CatchupView {
     caseSoFar: string;
@@ -32,15 +37,15 @@ export function buildCaseSoFarSummary(
         return normalize(latestRecap.dialogue, maxChars);
     }
 
-    const recentTurns = turns.slice(-3);
+    const recentTurns = turns.slice(-RECENT_TURNS_COUNT);
     if (recentTurns.length === 0) {
         return 'The court has just opened. Waiting for opening statements.';
     }
 
-    const stitched = recentTurns
+    const recentTurnsSummary = recentTurns
         .map(turn => `${turn.speaker}: ${turn.dialogue}`)
         .join(' · ');
-    return normalize(stitched, maxChars);
+    return normalize(recentTurnsSummary, maxChars);
 }
 
 export function juryStepFromPhase(phase: CourtPhase): string {

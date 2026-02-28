@@ -3,21 +3,9 @@ import { SessionMonitor } from './components/SessionMonitor';
 import { useSSE } from './hooks/useSSE';
 import { applyEventToSnapshot, mapSessionToSnapshot } from './session-snapshot';
 import type { CourtEvent, SessionSnapshot } from './types';
+import { asRecord, asString } from './utils/payload-guards';
 
-type UnknownRecord = Record<string, unknown>;
 const SESSION_DISCOVERY_INTERVAL_MS = 5_000;
-
-function asRecord(value: unknown): UnknownRecord {
-    return (
-            typeof value === 'object' && value !== null && !Array.isArray(value)
-        ) ?
-            (value as UnknownRecord)
-        :   {};
-}
-
-function asString(value: unknown): string | null {
-    return typeof value === 'string' ? value : null;
-}
 
 function resolvePreferredSessionId(response: unknown): string | null {
     const payload = asRecord(response);

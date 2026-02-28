@@ -6,6 +6,14 @@
  * runs to completion inside the effects container then self-destructs.
  */
 
+import {
+    FLASH_DEFAULT,
+    OBJECTION_COLOR,
+    HOLD_IT_COLOR,
+    TAKE_THAT_COLOR,
+    STAMP_STROKE_COLOR,
+} from '../theme.js';
+
 const SHAKE_INTENSITY_PX = 6;
 const SHAKE_DURATION_MS = 300;
 const FLASH_DURATION_MS = 150;
@@ -29,7 +37,7 @@ export function initEffects(stage) {
      * @param {number}  [opts.durationMs]       Duration in ms
      */
     function flash(opts = {}) {
-        const color = opts.color ?? 0xffffff;
+        const color = opts.color ?? FLASH_DEFAULT;
         const alpha = opts.alpha ?? 0.6;
         const duration = opts.durationMs ?? FLASH_DURATION_MS;
 
@@ -104,7 +112,7 @@ export function initEffects(stage) {
      */
     function stamp(opts = {}) {
         const text = opts.text ?? 'OBJECTION!';
-        const color = opts.color ?? 0xff4444;
+        const color = opts.color ?? OBJECTION_COLOR;
         const fontSize = opts.fontSize ?? 48;
         const displayMs = opts.displayMs ?? STAMP_DISPLAY_MS;
 
@@ -115,11 +123,11 @@ export function initEffects(stage) {
                 fontSize,
                 fontFamily: 'Impact, Arial Black, sans-serif',
                 fontWeight: '900',
-                stroke: 0x000000,
+                stroke: STAMP_STROKE_COLOR,
                 strokeThickness: 4,
                 align: 'center',
                 dropShadow: true,
-                dropShadowColor: 0x000000,
+                dropShadowColor: STAMP_STROKE_COLOR,
                 dropShadowDistance: 3,
             },
         });
@@ -187,25 +195,25 @@ export function initEffects(stage) {
      * Convenience: composite "objection" cue (stamp + flash + shake).
      */
     function objection() {
-        flash({ color: 0xff4444, alpha: 0.35 });
+        flash({ color: OBJECTION_COLOR, alpha: 0.35 });
         shake({ intensity: 8, durationMs: 350 });
-        stamp({ text: 'OBJECTION!', color: 0xff4444 });
+        stamp({ text: 'OBJECTION!', color: OBJECTION_COLOR });
     }
 
     /**
      * Convenience: "hold it" cue.
      */
     function holdIt() {
-        flash({ color: 0x44aaff, alpha: 0.3 });
-        stamp({ text: 'HOLD IT!', color: 0x44aaff });
+        flash({ color: HOLD_IT_COLOR, alpha: 0.3 });
+        stamp({ text: 'HOLD IT!', color: HOLD_IT_COLOR });
     }
 
     /**
      * Convenience: "take that" cue.
      */
     function takeThat() {
-        flash({ color: 0x44ff88, alpha: 0.3 });
-        stamp({ text: 'TAKE THAT!', color: 0x44ff88 });
+        flash({ color: TAKE_THAT_COLOR, alpha: 0.3 });
+        stamp({ text: 'TAKE THAT!', color: TAKE_THAT_COLOR });
     }
 
     return { trigger, flash, shake, freeze, stamp, objection, holdIt, takeThat };

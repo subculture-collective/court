@@ -168,30 +168,30 @@ function getActivePromptCandidates(activeGenres?: GenreTag[]): PromptBankEntry[]
     return candidates;
 }
 
-function selectWithGenreRotation(input: {
+function selectWithGenreRotation(rotationInput: {
     candidates: PromptBankEntry[];
     genreHistory: GenreTag[];
     minDistance: number;
     depletedPoolWarning: string;
 }): PromptBankEntry {
     const recentGenres = new Set(
-        input.genreHistory.slice(-input.minDistance).filter(Boolean),
+        rotationInput.genreHistory.slice(-rotationInput.minDistance).filter(Boolean),
     );
 
-    let availablePrompts = input.candidates.filter(
+    let availablePrompts = rotationInput.candidates.filter(
         prompt => !recentGenres.has(prompt.genre),
     );
 
     if (availablePrompts.length === 0) {
-        console.warn(input.depletedPoolWarning);
-        availablePrompts = input.candidates;
+        console.warn(rotationInput.depletedPoolWarning);
+        availablePrompts = rotationInput.candidates;
     }
 
     const sortedPrompts = [...availablePrompts].sort((a, b) =>
         a.id.localeCompare(b.id),
     );
     const seed = stableHash(
-        `${input.genreHistory.join('|')}|${sortedPrompts.map(prompt => prompt.id).join('|')}`,
+        `${rotationInput.genreHistory.join('|')}|${sortedPrompts.map(prompt => prompt.id).join('|')}`,
     );
 
     return sortedPrompts[seed % sortedPrompts.length];
@@ -200,12 +200,6 @@ function selectWithGenreRotation(input: {
 /**
  * Selects the next prompt from the bank, avoiding genres that violate
  * the minimum distance constraint.
- *
- * Algorithm:
- * 1. Filter out inactive prompts
- * 2. Identify genres that violate minDistance (appeared in last N sessions)
- * 3. Select from remaining genres with equal probability
- * 4. If all genres are exhausted (depleted pool), ignore distance constraint
  *
  * @param genreHistory - Array of recently used genres (most recent last)
  * @param activeGenres - Optional filter to restrict to specific genres
@@ -218,14 +212,7 @@ export function selectNextPrompt(
     activeGenres?: GenreTag[],
     minDistance: number = DEFAULT_ROTATION_CONFIG.minDistance,
 ): PromptBankEntry {
-    const candidates = getActivePromptCandidates(activeGenres);
-
-    return selectWithGenreRotation({
-        candidates,
-        genreHistory,
-        minDistance,
-        depletedPoolWarning: `[prompt-bank] All genres recently used (history=${genreHistory.join(',')}). Allowing any genre.`,
-    });
+    return selectNextSafePrompt(genreHistory, activeGenres, minDistance, () => true);
 }
 
 export interface PromptSafetyResult {
@@ -250,24 +237,29 @@ export function screenPromptForSession(
 /**
  * Selects the next safe prompt from the bank, avoiding unsafe prompts.
  * Uses deterministic rotation and falls back to any safe prompt if needed.
+ *
+ * @param genreHistory - Array of recently used genres (most recent last)
+ * @param activeGenres - Optional filter to restrict to specific genres
+ * @param minDistance - Minimum sessions before genre can repeat
+ * @param filter - Optional predicate applied to candidates (default: safety screen)
  */
 export function selectNextSafePrompt(
     genreHistory: GenreTag[] = [],
     activeGenres?: GenreTag[],
     minDistance: number = DEFAULT_ROTATION_CONFIG.minDistance,
+    filter: (candidate: PromptBankEntry) => boolean = candidate =>
+        screenPromptForSession(candidate).allowed,
 ): PromptBankEntry {
     const candidates = getActivePromptCandidates(activeGenres);
 
-    const safeCandidates = candidates.filter(
-        candidate => screenPromptForSession(candidate).allowed,
-    );
+    const filteredCandidates = candidates.filter(filter);
 
-    if (safeCandidates.length === 0) {
+    if (filteredCandidates.length === 0) {
         throw new Error('No safe prompts available in the prompt bank.');
     }
 
     return selectWithGenreRotation({
-        candidates: safeCandidates,
+        candidates: filteredCandidates,
         genreHistory,
         minDistance,
         depletedPoolWarning: `[prompt-bank] All safe genres recently used (history=${genreHistory.join(',')}). Allowing any safe genre.`,
