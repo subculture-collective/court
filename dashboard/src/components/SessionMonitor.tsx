@@ -12,6 +12,40 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
     const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
     const [loading, setLoading] = useState(true);
 
+    // Phase 3: Extract evidence cards from events
+    const evidenceCards = useMemo(() => {
+        return events
+            .filter(e => e.type === 'evidence_revealed')
+            .map(e => {
+                const payload = e.payload as Record<string, unknown>;
+                return {
+                    evidenceId:
+                        typeof payload.evidenceId === 'string' ?
+                            payload.evidenceId
+                        :   '',
+                    evidenceText:
+                        typeof payload.evidenceText === 'string' ?
+                            payload.evidenceText
+                        :   '',
+                    revealedAt:
+                        typeof payload.revealedAt === 'string' ?
+                            payload.revealedAt
+                        :   e.at,
+                };
+            });
+    }, [events]);
+
+    // Phase 3: Extract objection count from events
+    const objectionCount = useMemo(() => {
+        const objectionEvents = events.filter(
+            e => e.type === 'objection_count_changed',
+        );
+        if (objectionEvents.length === 0) return 0;
+        const latest = objectionEvents[objectionEvents.length - 1];
+        const payload = latest.payload as Record<string, unknown>;
+        return typeof payload.count === 'number' ? payload.count : 0;
+    }, [events]);
+
     useEffect(() => {
         if (!sessionId) return;
 
@@ -23,10 +57,19 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
             .then(data => {
                 const s = data.session;
                 if (!s) return;
+                const turns =
+                    Array.isArray(s.turns) ?
+                        (s.turns as Array<{
+                            id: string;
+                            speaker: string;
+                            dialogue: string;
+                            createdAt: string;
+                        }>)
+                    :   [];
                 setSnapshot({
                     sessionId: s.id,
                     phase: s.phase,
-                    transcript: (s.turns ?? []).map((t: any) => ({
+                    transcript: turns.map(t => ({
                         speaker: t.speaker,
                         content: t.dialogue,
                         timestamp: t.createdAt,
@@ -55,7 +98,7 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                 console.error('Failed to fetch snapshot:', err);
                 setLoading(false);
             });
-    }, [sessionId, events.length]);
+    }, [sessionId]);
 
     if (loading) {
         return (
@@ -77,26 +120,6 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
     }
 
     const latestEvents = events.slice(-10).reverse();
-
-    // Phase 3: Extract evidence cards from events
-    const evidenceCards = useMemo(() => {
-        return events
-            .filter(e => e.type === 'evidence_revealed')
-            .map(e => ({
-                evidenceId: e.evidenceId || '',
-                evidenceText: e.evidenceText || '',
-                revealedAt: e.revealedAt || e.timestamp,
-            }));
-    }, [events]);
-
-    // Phase 3: Extract objection count from events
-    const objectionCount = useMemo(() => {
-        const objectionEvents = events.filter(
-            e => e.type === 'objection_count_changed',
-        );
-        if (objectionEvents.length === 0) return 0;
-        return objectionEvents[objectionEvents.length - 1].count || 0;
-    }, [events]);
 
     return (
         <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
@@ -258,9 +281,14 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                         <div className='text-gray-500 text-center py-4'>
                             No recent events
                         </div>
-                    :   latestEvents.map((event, idx) => (
+                    :   latestEvents.map(event => {
+                            const payload = event.payload as Record<string, unknown>;
+                            const turn = payload.turn as
+                                | { speaker?: string }
+                                | undefined;
+                            return (
                             <div
-                                key={idx}
+                                key={event.id}
                                 className='bg-gray-700 rounded p-3 text-sm border-l-4 border-primary-500'
                             >
                                 <div className='flex justify-between items-start mb-1'>
@@ -274,28 +302,26 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                                     </span>
                                 </div>
                                 {event.type === 'turn' &&
-                                    (event.payload.turn as any)?.speaker && (
+                                    typeof turn?.speaker === 'string' && (
                                         <div className='text-gray-300'>
                                             <span className='text-gray-400'>
                                                 Speaker:
                                             </span>{' '}
-                                            {
-                                                (event.payload.turn as any)
-                                                    .speaker
-                                            }
+                                            {turn.speaker}
                                         </div>
                                     )}
                                 {event.type === 'phase_changed' &&
-                                    event.payload.phase && (
+                                    typeof payload.phase === 'string' && (
                                         <div className='text-gray-300'>
                                             <span className='text-gray-400'>
                                                 Phase:
                                             </span>{' '}
-                                            {event.payload.phase as string}
+                                            {payload.phase}
                                         </div>
                                     )}
                             </div>
-                        ))
+                            );
+                        })
                     }
                 </div>
             </div>

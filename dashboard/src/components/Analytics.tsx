@@ -186,9 +186,9 @@ export function Analytics({ events }: AnalyticsProps) {
                     :   events
                             .slice(-50)
                             .reverse()
-                            .map((event, idx) => (
+                            .map(event => (
                                 <div
-                                    key={idx}
+                                    key={event.id}
                                     className='flex items-center gap-3 py-2 px-3 hover:bg-gray-700 rounded transition-colors'
                                 >
                                     <div className='text-xs text-gray-500 font-mono w-20'>

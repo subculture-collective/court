@@ -22,9 +22,9 @@ Broadcast automation hooks trigger external stream production events based on co
 ### obs
 
 - **OBS WebSocket 5.x integration**
-- Triggers scene switches and media sources
+- Hook interfaces for scene switches and media sources are in place
 - Requires OBS Studio with WebSocket plugin
-- Production-ready with retry logic
+- Current adapter is scaffold-level (logs + fail-safe wrappers); full OBS command execution is pending
 
 ### Future: nodecg, streamelements
 
@@ -92,7 +92,7 @@ For automatic scene switching, use these scene names in OBS:
 
 - `case_prompt` — Intro/all rise scene
 - `verdict_vote` — Voting overlay scene
-- `sentence_vote` — Sentence voting scene  
+- `sentence_vote` — Sentence voting scene
 - `final_ruling` — Final judgment scene
 
 **Note**: Scene names are case-sensitive and must match phase names.
@@ -100,9 +100,9 @@ For automatic scene switching, use these scene names in OBS:
 ### Step 4: Test Connection
 
 1. Start server: `npm run dev`
-2. Check logs for: `[broadcast] OBS adapter initialized`
+2. Check logs for OBS hook activity (for example: `[broadcast:obs] Switching scene: ...`)
 3. Create a session and advance through phases
-4. Verify OBS scene switches in logs: `[broadcast:obs] Switching scene: scene=verdict_vote`
+4. Verify hook telemetry events (`broadcast_hook_triggered` / `broadcast_hook_failed`) via SSE
 
 ---
 
@@ -312,18 +312,18 @@ To add support for NodeCG, StreamElements, or other tools:
 
    ```typescript
    import type { BroadcastAdapter } from './adapter.js';
-   
+
    export class MyAdapter implements BroadcastAdapter {
        readonly provider = 'my-provider';
-       
+
        async triggerPhaseStinger(input: PhaseStingerInput): Promise<void> {
            // Your implementation
        }
-       
+
        async triggerSceneSwitch(input: SceneSwitchInput): Promise<void> {
            // Your implementation
        }
-       
+
        async triggerModerationAlert(input: ModerationAlertInput): Promise<void> {
            // Your implementation
        }
@@ -351,7 +351,7 @@ To add support for NodeCG, StreamElements, or other tools:
 Track these events via analytics dashboard:
 
 - `broadcast_hook_triggered` count per session
-- `broadcast_hook_failed` count per session  
+- `broadcast_hook_failed` count per session
 - Hook latency distribution (p50, p95, p99)
 - Hook failure rate percentage
 

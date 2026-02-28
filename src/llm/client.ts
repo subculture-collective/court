@@ -1,9 +1,18 @@
 import type { LLMGenerateOptions } from '../types.js';
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
-const DEFAULT_MODEL =
-    process.env.LLM_MODEL ?? 'deepseek/deepseek-chat-v3-0324:free';
-const FORCE_MOCK = process.env.LLM_MOCK === 'true';
+const FALLBACK_MODEL = 'deepseek/deepseek-chat-v3-0324:free';
+
+function runtimeLLMConfig(env: NodeJS.ProcessEnv = process.env): {
+    apiKey: string;
+    model: string;
+    forceMock: boolean;
+} {
+    const apiKey = (env.OPENROUTER_API_KEY ?? '').trim();
+    const model = (env.LLM_MODEL ?? FALLBACK_MODEL).trim() || FALLBACK_MODEL;
+    const runningNodeTests = process.argv.includes('--test');
+    const forceMock = env.LLM_MOCK === 'true' || runningNodeTests;
+    return { apiKey, model, forceMock };
+}
 
 function extractFromXml(text: string): string {
     const contentMatch = text.match(
@@ -50,9 +59,10 @@ function mockReply(prompt: string): string {
 export async function llmGenerate(
     options: LLMGenerateOptions,
 ): Promise<string> {
+    const config = runtimeLLMConfig();
     const {
         messages,
-        model = DEFAULT_MODEL,
+        model = config.model,
         temperature = 0.7,
         maxTokens = 300,
     } = options;
@@ -61,38 +71,48 @@ export async function llmGenerate(
         .reverse()
         .find(message => message.role === 'user')?.content;
 
-    if (!OPENROUTER_API_KEY || FORCE_MOCK) {
+    if (!config.apiKey || config.forceMock) {
         return mockReply(latestUserMessage ?? '');
     }
 
-    const response = await fetch(
-        'https://openrouter.ai/api/v1/chat/completions',
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+    try {
+        const response = await fetch(
+            'https://openrouter.ai/api/v1/chat/completions',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${config.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model,
+                    messages,
+                    temperature,
+                    max_tokens: maxTokens,
+                }),
             },
-            body: JSON.stringify({
-                model,
-                messages,
-                temperature,
-                max_tokens: maxTokens,
-            }),
-        },
-    );
-
-    if (!response.ok) {
-        const body = await response.text();
-        throw new Error(
-            `OpenRouter request failed (${response.status}): ${body.slice(0, 300)}`,
         );
+
+        if (!response.ok) {
+            const body = await response.text();
+            // eslint-disable-next-line no-console
+            console.warn(
+                `OpenRouter request failed (${response.status}); falling back to mock dialogue: ${body.slice(0, 160)}`,
+            );
+            return mockReply(latestUserMessage ?? '');
+        }
+
+        const data = (await response.json()) as {
+            choices?: [{ message?: { content?: string } }];
+        };
+
+        const text = data.choices?.[0]?.message?.content ?? '';
+        return sanitizeDialogue(text);
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn(
+            `OpenRouter request threw; falling back to mock dialogue: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return mockReply(latestUserMessage ?? '');
     }
-
-    const data = (await response.json()) as {
-        choices?: [{ message?: { content?: string } }];
-    };
-
-    const text = data.choices?.[0]?.message?.content ?? '';
-    return sanitizeDialogue(text);
 }

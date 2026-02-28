@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import postgres, { type Sql } from 'postgres';
+import postgres, {
+    type JSONValue,
+    type Sql,
+    type TransactionSql,
+} from 'postgres';
 import type {
     AgentId,
     CaseType,
@@ -163,7 +167,7 @@ class InMemoryCourtSessionStore implements CourtSessionStore {
         this.publish({
             sessionId: session.id,
             type: 'session_created',
-            payload: { session: deepCopy(session) },
+            payload: { sessionId: session.id },
         });
 
         return deepCopy(session);
@@ -543,6 +547,8 @@ interface TurnRow {
     created_at: Date | string;
 }
 
+type CourtTx = TransactionSql;
+
 class PostgresCourtSessionStore implements CourtSessionStore {
     private readonly eventEmitter = new EventEmitter();
 
@@ -579,7 +585,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 ${this.db.json(input.participants)},
                 'case_prompt',
                 0,
-                ${this.db.json(input.metadata as any)}
+                ${this.db.json(input.metadata as unknown as JSONValue)}
             )
             RETURNING *
         `;
@@ -588,7 +594,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         this.publish({
             sessionId,
             type: 'session_created',
-            payload: { session },
+            payload: { sessionId },
         });
 
         return session;
@@ -655,8 +661,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         phase: CourtPhase,
         phaseDurationMs?: number,
     ): Promise<CourtSession> {
-        const result = await this.db.begin(async (tx: any) => {
-            const [current] = await tx<SessionRow[]>`
+        const result = await this.withTxQuery(async txQuery => {
+
+            const [current] = await txQuery<SessionRow[]>`
                 SELECT *
                 FROM court_sessions
                 WHERE id = ${sessionId}
@@ -704,10 +711,10 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 };
             }
 
-            const [updated] = await tx<SessionRow[]>`
+            const [updated] = await txQuery<SessionRow[]>`
                 UPDATE court_sessions
                 SET phase = ${phase},
-                    metadata = ${tx.json(metadata as unknown as Record<string, unknown>)}
+                    metadata = ${txQuery.json(metadata as unknown as JSONValue)}
                 WHERE id = ${sessionId}
                 RETURNING *
             `;
@@ -777,8 +784,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             reasons: string[];
         };
     }): Promise<CourtTurn> {
-        const turn = await this.db.begin(async (tx: any) => {
-            const [session] = await tx<SessionRow[]>`
+        const turn = await this.withTxQuery(async txQuery => {
+
+            const [session] = await txQuery<SessionRow[]>`
                 SELECT id, turn_count
                 FROM court_sessions
                 WHERE id = ${input.sessionId}
@@ -795,7 +803,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
             const turnNumber = session.turn_count;
             const createdAt = new Date().toISOString();
 
-            await tx`
+            await txQuery`
                 INSERT INTO court_turns (
                     id,
                     session_id,
@@ -817,7 +825,7 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 )
             `;
 
-            await tx`
+            await txQuery`
                 UPDATE court_sessions
                 SET turn_count = turn_count + 1
                 WHERE id = ${input.sessionId}
@@ -862,8 +870,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         voteType: 'verdict' | 'sentence';
         choice: string;
     }): Promise<CourtSession> {
-        const row = await this.db.begin(async (tx: any) => {
-            const [current] = await tx<SessionRow[]>`
+        const row = await this.withTxQuery(async txQuery => {
+
+            const [current] = await txQuery<SessionRow[]>`
                 SELECT *
                 FROM court_sessions
                 WHERE id = ${input.sessionId}
@@ -911,9 +920,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                     (metadata.sentenceVotes[input.choice] ?? 0) + 1;
             }
 
-            const [updated] = await tx<SessionRow[]>`
+            const [updated] = await txQuery<SessionRow[]>`
                 UPDATE court_sessions
-                SET metadata = ${tx.json(metadata as unknown as Record<string, unknown>)}
+                SET metadata = ${txQuery.json(metadata as unknown as JSONValue)}
                 WHERE id = ${input.sessionId}
                 RETURNING *
             `;
@@ -952,8 +961,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         verdict: string;
         sentence: string;
     }): Promise<CourtSession> {
-        const row = await this.db.begin(async (tx: any) => {
-            const [current] = await tx<SessionRow[]>`
+        const row = await this.withTxQuery(async txQuery => {
+
+            const [current] = await txQuery<SessionRow[]>`
                 SELECT *
                 FROM court_sessions
                 WHERE id = ${input.sessionId}
@@ -975,9 +985,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 decidedAt: new Date().toISOString(),
             };
 
-            const [updated] = await tx<SessionRow[]>`
+            const [updated] = await txQuery<SessionRow[]>`
                 UPDATE court_sessions
-                SET metadata = ${tx.json(metadata as unknown as Record<string, unknown>)}
+                SET metadata = ${txQuery.json(metadata as unknown as JSONValue)}
                 WHERE id = ${input.sessionId}
                 RETURNING *
             `;
@@ -995,8 +1005,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         phase: CourtPhase;
         cycleNumber: number;
     }): Promise<void> {
-        const row = await this.db.begin(async (tx: any) => {
-            const [current] = await tx<SessionRow[]>`
+        await this.withTxQuery(async txQuery => {
+
+            const [current] = await txQuery<SessionRow[]>`
                 SELECT *
                 FROM court_sessions
                 WHERE id = ${input.sessionId}
@@ -1017,9 +1028,9 @@ class PostgresCourtSessionStore implements CourtSessionStore {
                 metadata.recapTurnIds.push(input.turnId);
             }
 
-            const [updated] = await tx<SessionRow[]>`
+            const [updated] = await txQuery<SessionRow[]>`
                 UPDATE court_sessions
-                SET metadata = ${tx.json(metadata as unknown as Record<string, unknown>)}
+                SET metadata = ${txQuery.json(metadata as unknown as JSONValue)}
                 WHERE id = ${input.sessionId}
                 RETURNING *
             `;
@@ -1139,6 +1150,13 @@ class PostgresCourtSessionStore implements CourtSessionStore {
         };
 
         this.eventEmitter.emit(this.channel(input.sessionId), event);
+    }
+
+    private withTxQuery<T>(work: (txQuery: Sql) => Promise<T>): Promise<T> {
+        return this.db.begin(async (tx: CourtTx) => {
+            const txQuery = tx as unknown as Sql;
+            return work(txQuery);
+        }) as Promise<T>;
     }
 
     private async fetchTurns(sessionId: string): Promise<CourtTurn[]> {

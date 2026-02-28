@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+const FADE_IN_DELAY_MS = 50;
+
 export interface EvidenceCardProps {
     evidenceId: string;
     evidenceText: string;
@@ -15,7 +17,7 @@ export function EvidenceCard({
 
     useEffect(() => {
         // Trigger fade-in animation on mount
-        const timer = setTimeout(() => setVisible(true), 50);
+        const timer = setTimeout(() => setVisible(true), FADE_IN_DELAY_MS);
         return () => clearTimeout(timer);
     }, []);
 

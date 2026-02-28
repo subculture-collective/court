@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { CourtEvent, SSEMessage } from '../types';
 
+const RECONNECT_DELAY_MS = 3000;
+
 export function useSSE(
     sessionId: string | null,
     onEvent: (event: CourtEvent) => void,
@@ -42,7 +44,7 @@ export function useSSE(
 
                 reconnectTimeoutRef.current = setTimeout(() => {
                     connect();
-                }, 3000);
+                }, RECONNECT_DELAY_MS);
             };
 
             es.onmessage = e => {

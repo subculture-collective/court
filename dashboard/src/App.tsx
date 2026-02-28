@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SessionMonitor } from './components/SessionMonitor';
 import { ModerationQueue } from './components/ModerationQueue';
 import { ManualControls } from './components/ManualControls';
@@ -13,9 +13,11 @@ function App() {
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [events, setEvents] = useState<CourtEvent[]>([]);
 
-    const { connected, error } = useSSE(sessionId, event => {
+    const handleSSEEvent = useCallback((event: CourtEvent) => {
         setEvents(prev => [...prev, event]);
-    });
+    }, []);
+
+    const { connected, error } = useSSE(sessionId, handleSSEEvent);
 
     useEffect(() => {
         // Fetch current session on mount
@@ -26,12 +28,17 @@ function App() {
                 }
                 return res.json();
             })
-            .then(data => {
+            .then(sessionsResponse => {
                 let id: string | null = null;
 
-                if (Array.isArray(data.sessions) && data.sessions.length > 0) {
-                    const first = data.sessions[0] as any;
-                    id = (first && (first.id || first.sessionId)) ?? null;
+                if (
+                    Array.isArray(sessionsResponse.sessions) &&
+                    sessionsResponse.sessions.length > 0
+                ) {
+                    const first = sessionsResponse.sessions[0] as
+                        | { id?: string; sessionId?: string }
+                        | undefined;
+                    id = first?.id ?? first?.sessionId ?? null;
                 }
 
                 if (id) {

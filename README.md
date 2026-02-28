@@ -215,6 +215,7 @@ npm test
 | `docs/ADR-001-juryrigged-architecture.md` | Core architectural decisions and invariants |
 | `docs/architecture.md` | System components and phase sequencing |
 | `docs/api.md` | REST + SSE contracts and schemas |
+| `docs/coding-conventions.md` | Team coding style and maintainability conventions |
 | `docs/operator-runbook.md` | Operator procedures and incident response |
 | `docs/ops-runbook.md` | Staging deploy path, SLI/alert definitions |
 | `docs/moderation-playbook.md` | Moderation policy and handling |

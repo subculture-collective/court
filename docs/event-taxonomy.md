@@ -442,6 +442,8 @@ Emitted when a vote is rejected due to the per-IP rate limit.
 {
     ip: string; // the source IP address
     voteType: 'verdict' | 'sentence';
+    reason?: string;
+    retryAfterMs?: number;
 }
 ```
 

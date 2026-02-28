@@ -60,6 +60,8 @@ const voteState = {
 
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 10_000;
+const CATCHUP_MAX_CHARS = 220;
+const TIMER_TICK_MS = 250;
 
 const catchupState = {
     visible: true,
@@ -123,7 +125,7 @@ function summarizeCaseSoFar(turns) {
 
     const toCompact = text => text.replace(/\s+/g, ' ').trim();
     const clip = text => {
-        const maxChars = 220;
+        const maxChars = CATCHUP_MAX_CHARS;
         const compact = toCompact(text);
         if (compact.length <= maxChars) return compact;
         return `${compact.slice(0, maxChars - 1).trimEnd()}…`;
@@ -390,7 +392,7 @@ function startVoteCountdowns() {
         clearInterval(voteCountdownInterval);
     }
     updateVoteCountdowns();
-    voteCountdownInterval = setInterval(updateVoteCountdowns, 250);
+    voteCountdownInterval = setInterval(updateVoteCountdowns, TIMER_TICK_MS);
 }
 
 function openVoteWindow(type, phaseStartedAt, phaseDurationMs) {
@@ -444,7 +446,7 @@ function updateTimer(phaseStartedAt, phaseDurationMs) {
     };
 
     tick();
-    timerInterval = setInterval(tick, 250);
+    timerInterval = setInterval(tick, TIMER_TICK_MS);
 }
 
 function scheduleReconnect(sessionId) {
@@ -472,6 +474,150 @@ function scheduleReconnect(sessionId) {
     }, delayMs);
 }
 
+function handleSnapshotEvent(snapshotPayload) {
+    const { session, turns, verdictVotes, sentenceVotes } = snapshotPayload;
+    activeSession = session;
+    activeSession.turns = turns;
+    phaseBadge.textContent = `phase: ${session.phase}`;
+    sessionMeta.textContent = `${session.id} · ${session.status}`;
+    updateTimer(
+        session.metadata.phaseStartedAt,
+        session.metadata.phaseDurationMs,
+    );
+    updateCatchupPanel(activeSession);
+
+    feed.innerHTML = '';
+    resetStreamState(streamState, snapshotPayload);
+    turns.forEach(turn => {
+        appendTurn(turn, {
+            recap: isRecapTurn(streamState, turn.id),
+        });
+    });
+    if (turns.length === 0) {
+        activeSpeakerEl.textContent = 'Waiting for first turn…';
+        captionLineEl.textContent = 'Captions will appear here.';
+    }
+    renderTally(verdictTallies, verdictVotes);
+    renderTally(sentenceTallies, sentenceVotes);
+    resetVoteState();
+    if (session.phase === 'verdict_vote') {
+        openVoteWindow(
+            'verdict',
+            session.metadata.phaseStartedAt,
+            session.metadata.phaseDurationMs,
+        );
+    }
+    if (session.phase === 'sentence_vote') {
+        openVoteWindow(
+            'sentence',
+            session.metadata.phaseStartedAt,
+            session.metadata.phaseDurationMs,
+        );
+    }
+    renderActions(session);
+    renderVoteMeta();
+}
+
+function handleTurnEvent(turnPayload) {
+    const turn = turnPayload.turn;
+    if (!shouldAppendTurn(streamState, turn)) {
+        return;
+    }
+    if (activeSession) {
+        activeSession.turns = activeSession.turns || [];
+        activeSession.turns.push(turn);
+    }
+    appendTurn(turn, {
+        recap: isRecapTurn(streamState, turn.id),
+    });
+    updateCatchupPanel(activeSession);
+}
+
+function handleJudgeRecapEvent(recapPayload) {
+    markRecap(streamState, recapPayload.turnId);
+    markTurnRecap(recapPayload.turnId);
+    updateCatchupPanel(activeSession);
+}
+
+function handlePhaseChangedEvent(phasePayload) {
+    if (activeSession) {
+        activeSession.phase = phasePayload.phase;
+        activeSession.metadata.phaseStartedAt = phasePayload.phaseStartedAt;
+        activeSession.metadata.phaseDurationMs = phasePayload.phaseDurationMs;
+        renderActions(activeSession);
+    }
+    phaseBadge.textContent = `phase: ${phasePayload.phase}`;
+    updateTimer(phasePayload.phaseStartedAt, phasePayload.phaseDurationMs);
+    updateCatchupPanel(activeSession);
+    if (phasePayload.phase === 'verdict_vote') {
+        openVoteWindow(
+            'verdict',
+            phasePayload.phaseStartedAt,
+            phasePayload.phaseDurationMs,
+        );
+    }
+    if (phasePayload.phase === 'sentence_vote') {
+        openVoteWindow(
+            'sentence',
+            phasePayload.phaseStartedAt,
+            phasePayload.phaseDurationMs,
+        );
+    }
+}
+
+function handleVoteUpdatedEvent(votePayload) {
+    renderTally(verdictTallies, votePayload.verdictVotes);
+    renderTally(sentenceTallies, votePayload.sentenceVotes);
+}
+
+function handleVoteClosedEvent(voteClosedPayload) {
+    const voteTotal = Object.values(voteClosedPayload.votes || {}).reduce(
+        (sum, count) => sum + Number(count),
+        0,
+    );
+    setStatus(
+        `${voteClosedPayload.pollType} poll closed with ${voteTotal} vote${voteTotal === 1 ? '' : 's'}.`,
+    );
+    closeVoteWindow(voteClosedPayload.pollType, voteClosedPayload.closedAt);
+    if (activeSession) {
+        renderActions(activeSession);
+    }
+}
+
+function handleSessionCompletedEvent() {
+    setStatus('Session complete. Verdict delivered.');
+    updateTimer();
+    voteState.verdict.isOpen = false;
+    voteState.sentence.isOpen = false;
+    renderVoteMeta();
+}
+
+function handleSessionFailedEvent(failedPayload) {
+    setStatus(`Session failed: ${failedPayload.reason}`, 'error');
+    updateTimer();
+}
+
+function handleAnalyticsEvent(analyticsPayload) {
+    if (analyticsPayload.name === 'poll_started') {
+        setStatus(`${analyticsPayload.pollType} poll started.`);
+    }
+    if (analyticsPayload.name === 'poll_closed') {
+        setStatus(`${analyticsPayload.pollType} poll closed.`);
+    }
+}
+
+const STREAM_EVENT_HANDLERS = {
+    snapshot: handleSnapshotEvent,
+    turn: handleTurnEvent,
+    judge_recap_emitted: handleJudgeRecapEvent,
+    phase_changed: handlePhaseChangedEvent,
+    vote_updated: handleVoteUpdatedEvent,
+    vote_closed: handleVoteClosedEvent,
+    session_completed: handleSessionCompletedEvent,
+    session_failed: handleSessionFailedEvent,
+    analytics_event: handleAnalyticsEvent,
+};
+
 function connectStream(sessionId, isReconnect = false) {
     if (source) {
         source.close();
@@ -495,150 +641,12 @@ function connectStream(sessionId, isReconnect = false) {
 
     source.onmessage = event => {
         const payload = JSON.parse(event.data);
-
-        if (payload.type === 'snapshot') {
-            const { session, turns, verdictVotes, sentenceVotes } =
-                payload.payload;
-            activeSession = session;
-            activeSession.turns = turns;
-            phaseBadge.textContent = `phase: ${session.phase}`;
-            sessionMeta.textContent = `${session.id} · ${session.status}`;
-            updateTimer(
-                session.metadata.phaseStartedAt,
-                session.metadata.phaseDurationMs,
-            );
-            updateCatchupPanel(activeSession);
-
-            feed.innerHTML = '';
-            resetStreamState(streamState, payload.payload);
-            turns.forEach(turn => {
-                appendTurn(turn, {
-                    recap: isRecapTurn(streamState, turn.id),
-                });
-            });
-            if (turns.length === 0) {
-                activeSpeakerEl.textContent = 'Waiting for first turn…';
-                captionLineEl.textContent = 'Captions will appear here.';
-            }
-            renderTally(verdictTallies, verdictVotes);
-            renderTally(sentenceTallies, sentenceVotes);
-            resetVoteState();
-            if (session.phase === 'verdict_vote') {
-                openVoteWindow(
-                    'verdict',
-                    session.metadata.phaseStartedAt,
-                    session.metadata.phaseDurationMs,
-                );
-            }
-            if (session.phase === 'sentence_vote') {
-                openVoteWindow(
-                    'sentence',
-                    session.metadata.phaseStartedAt,
-                    session.metadata.phaseDurationMs,
-                );
-            }
-            renderActions(session);
-            renderVoteMeta();
+        const handler = STREAM_EVENT_HANDLERS[payload.type];
+        if (!handler) {
             return;
         }
 
-        if (payload.type === 'turn') {
-            const turn = payload.payload.turn;
-            if (!shouldAppendTurn(streamState, turn)) {
-                return;
-            }
-            if (activeSession) {
-                activeSession.turns = activeSession.turns || [];
-                activeSession.turns.push(turn);
-            }
-            appendTurn(turn, {
-                recap: isRecapTurn(streamState, turn.id),
-            });
-            updateCatchupPanel(activeSession);
-            return;
-        }
-
-        if (payload.type === 'judge_recap_emitted') {
-            markRecap(streamState, payload.payload.turnId);
-            markTurnRecap(payload.payload.turnId);
-            updateCatchupPanel(activeSession);
-            return;
-        }
-
-        if (payload.type === 'phase_changed') {
-            if (activeSession) {
-                activeSession.phase = payload.payload.phase;
-                activeSession.metadata.phaseStartedAt =
-                    payload.payload.phaseStartedAt;
-                activeSession.metadata.phaseDurationMs =
-                    payload.payload.phaseDurationMs;
-                renderActions(activeSession);
-            }
-            phaseBadge.textContent = `phase: ${payload.payload.phase}`;
-            updateTimer(
-                payload.payload.phaseStartedAt,
-                payload.payload.phaseDurationMs,
-            );
-            updateCatchupPanel(activeSession);
-            if (payload.payload.phase === 'verdict_vote') {
-                openVoteWindow(
-                    'verdict',
-                    payload.payload.phaseStartedAt,
-                    payload.payload.phaseDurationMs,
-                );
-            }
-            if (payload.payload.phase === 'sentence_vote') {
-                openVoteWindow(
-                    'sentence',
-                    payload.payload.phaseStartedAt,
-                    payload.payload.phaseDurationMs,
-                );
-            }
-            return;
-        }
-
-        if (payload.type === 'vote_updated') {
-            renderTally(verdictTallies, payload.payload.verdictVotes);
-            renderTally(sentenceTallies, payload.payload.sentenceVotes);
-            return;
-        }
-
-        if (payload.type === 'vote_closed') {
-            const voteTotal = Object.values(payload.payload.votes || {}).reduce(
-                (sum, count) => sum + Number(count),
-                0,
-            );
-            setStatus(
-                `${payload.payload.pollType} poll closed with ${voteTotal} vote${voteTotal === 1 ? '' : 's'}.`,
-            );
-            closeVoteWindow(payload.payload.pollType, payload.payload.closedAt);
-            if (activeSession) {
-                renderActions(activeSession);
-            }
-            return;
-        }
-
-        if (payload.type === 'session_completed') {
-            setStatus('Session complete. Verdict delivered.');
-            updateTimer();
-            voteState.verdict.isOpen = false;
-            voteState.sentence.isOpen = false;
-            renderVoteMeta();
-        }
-
-        if (payload.type === 'session_failed') {
-            setStatus(`Session failed: ${payload.payload.reason}`, 'error');
-            updateTimer();
-        }
-
-        if (payload.type === 'analytics_event') {
-            if (payload.payload.name === 'poll_started') {
-                setStatus(`${payload.payload.pollType} poll started.`);
-            }
-            if (payload.payload.name === 'poll_closed') {
-                setStatus(`${payload.payload.pollType} poll closed.`);
-            }
-        }
+        handler(payload.payload);
     };
 
     source.onerror = () => {
