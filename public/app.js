@@ -857,12 +857,22 @@ function syncRendererState() {
         }
     }
 
+    // Avoid skipping the typewriter animation: during an active animation,
+    // prefer the currently visible caption text over fullText.
+    let dialogueContent = dialogueTypewriterState.fullText;
+    if (dialogueTypewriterState.frameId !== null) {
+        const captionLineEl = document.querySelector('.caption-line');
+        if (captionLineEl && typeof captionLineEl.textContent === 'string') {
+            dialogueContent = captionLineEl.textContent;
+        }
+    }
+
     courtRenderer.update({
         phase: activeSession?.phase ?? 'idle',
         activeSpeakerRole: lastTurn?.role ?? null,
         roleNames,
         speakerLabel: dialogueTypewriterState.speakerLabel,
-        dialogueContent: dialogueTypewriterState.fullText,
+        dialogueContent,
         nameplate: lastTurn ? `${lastTurn.role} · ${lastTurn.speaker}` : '',
     });
 }

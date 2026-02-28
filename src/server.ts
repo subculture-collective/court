@@ -550,8 +550,17 @@ function createStreamHandler(
         const cleanup: Array<() => void> = [];
 
         if (replay) {
-            const timers = replay.frames.map(frame =>
-                setTimeout(() => {
+            let currentTimer: ReturnType<typeof setTimeout> | null = null;
+            let frameIndex = 0;
+            const frames = replay.frames;
+            const startMs = Date.now();
+
+            function scheduleNext(): void {
+                if (streamClosed || frameIndex >= frames.length) return;
+                const frame = frames[frameIndex];
+                const elapsed = Date.now() - startMs;
+                const delay = Math.max(0, frame.delayMs - elapsed);
+                currentTimer = setTimeout(() => {
                     if (streamClosed) return;
                     send(
                         rewriteReplayEventForSession(
@@ -559,12 +568,16 @@ function createStreamHandler(
                             req.params.id,
                         ),
                     );
-                }, frame.delayMs),
-            );
+                    frameIndex += 1;
+                    scheduleNext();
+                }, delay);
+            }
+
+            scheduleNext();
 
             cleanup.push(() => {
-                for (const timer of timers) {
-                    clearTimeout(timer);
+                if (currentTimer !== null) {
+                    clearTimeout(currentTimer);
                 }
             });
         } else {

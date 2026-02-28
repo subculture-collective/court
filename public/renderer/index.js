@@ -83,20 +83,13 @@ export async function createCourtRenderer(host) {
         },
     });
 
-    let resizeListenerAttached = false;
-    if (!resizeListenerAttached) {
-        window.addEventListener(
-            'resize',
-            () => {
-                background.draw();
-                characters.layout();
-                ui.layout();
-                evidence.layoutCards();
-            },
-            { passive: true },
-        );
-        resizeListenerAttached = true;
+    function onResize() {
+        background.draw();
+        characters.layout();
+        ui.layout();
+        evidence.layoutCards();
     }
+    window.addEventListener('resize', onResize, { passive: true });
 
     /**
      * Push the latest session state into every renderer layer.
@@ -153,6 +146,7 @@ export async function createCourtRenderer(host) {
     }
 
     function destroy() {
+        window.removeEventListener('resize', onResize);
         dialogueSM.destroy();
         stage.destroy();
     }
