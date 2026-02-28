@@ -1,19 +1,27 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import type { CourtEvent, SessionSnapshot, TranscriptEntry } from '../types';
+import React, { useMemo } from 'react';
+import type { CourtEvent, SessionSnapshot } from '../types';
 import { EvidenceCard } from './EvidenceCard';
 import { ObjectionCounter } from './ObjectionCounter';
 
 interface SessionMonitorProps {
     events: CourtEvent[];
-    sessionId: string | null;
+    snapshot: SessionSnapshot | null;
+    loading: boolean;
 }
 
-export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
-    const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
-    const [loading, setLoading] = useState(true);
+export function SessionMonitor({
+    events,
+    snapshot,
+    loading,
+}: SessionMonitorProps) {
+    const shouldComputeEventDerivatives = !loading && snapshot !== null;
 
     // Phase 3: Extract evidence cards from events
     const evidenceCards = useMemo(() => {
+        if (!shouldComputeEventDerivatives) {
+            return [];
+        }
+
         return events
             .filter(e => e.type === 'evidence_revealed')
             .map(e => {
@@ -33,10 +41,14 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                         :   e.at,
                 };
             });
-    }, [events]);
+    }, [events, shouldComputeEventDerivatives]);
 
     // Phase 3: Extract objection count from events
     const objectionCount = useMemo(() => {
+        if (!shouldComputeEventDerivatives) {
+            return 0;
+        }
+
         const objectionEvents = events.filter(
             e => e.type === 'objection_count_changed',
         );
@@ -44,61 +56,24 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
         const latest = objectionEvents[objectionEvents.length - 1];
         const payload = latest.payload as Record<string, unknown>;
         return typeof payload.count === 'number' ? payload.count : 0;
-    }, [events]);
+    }, [events, shouldComputeEventDerivatives]);
 
-    useEffect(() => {
-        if (!sessionId) return;
+    const latestEvents = useMemo(
+        () =>
+            shouldComputeEventDerivatives ? events.slice(-10).reverse() : [],
+        [events, shouldComputeEventDerivatives],
+    );
 
-        fetch(`/api/court/sessions/${sessionId}`)
-            .then(res => {
-                if (!res.ok) throw new Error(`Status ${res.status}`);
-                return res.json();
-            })
-            .then(data => {
-                const s = data.session;
-                if (!s) return;
-                const turns =
-                    Array.isArray(s.turns) ?
-                        (s.turns as Array<{
-                            id: string;
-                            speaker: string;
-                            dialogue: string;
-                            createdAt: string;
-                        }>)
-                    :   [];
-                setSnapshot({
-                    sessionId: s.id,
-                    phase: s.phase,
-                    transcript: turns.map(t => ({
-                        speaker: t.speaker,
-                        content: t.dialogue,
-                        timestamp: t.createdAt,
-                        isRecap: s.metadata?.recapTurnIds?.includes(t.id),
-                    })),
-                    votes: {
-                        verdict: {
-                            guilty:
-                                s.metadata?.verdictVotes?.guilty ?? 0,
-                            innocent:
-                                s.metadata?.verdictVotes?.not_guilty ??
-                                s.metadata?.verdictVotes?.not_liable ??
-                                0,
-                            total: Object.values(
-                                s.metadata?.verdictVotes ?? {},
-                            ).reduce((a: number, b) => a + (b as number), 0),
-                        },
-                    },
-                    recapCount: (s.metadata?.recapTurnIds ?? []).length,
-                    witnessCaps: { witness1: 0, witness2: 0 },
-                    config: { maxWitnessStatements: 3, recapInterval: 2 },
-                });
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error('Failed to fetch snapshot:', err);
-                setLoading(false);
-            });
-    }, [sessionId]);
+    const totalVotes = useMemo(
+        () =>
+            snapshot ?
+                Object.values(snapshot.votes).reduce(
+                    (sum, voteCount) => sum + voteCount.total,
+                    0,
+                )
+            :   0,
+        [snapshot],
+    );
 
     if (loading) {
         return (
@@ -118,8 +93,6 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
             </div>
         );
     }
-
-    const latestEvents = events.slice(-10).reverse();
 
     return (
         <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
@@ -149,12 +122,7 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                     </div>
                     <div className='flex justify-between'>
                         <span className='text-gray-400'>Total Votes:</span>
-                        <span>
-                            {Object.values(snapshot.votes).reduce(
-                                (sum, v) => sum + v.total,
-                                0,
-                            )}
-                        </span>
+                        <span>{totalVotes}</span>
                     </div>
                     <div className='flex justify-between'>
                         <span className='text-gray-400'>Recap Count:</span>
@@ -282,44 +250,47 @@ export function SessionMonitor({ events, sessionId }: SessionMonitorProps) {
                             No recent events
                         </div>
                     :   latestEvents.map(event => {
-                            const payload = event.payload as Record<string, unknown>;
+                            const payload = event.payload as Record<
+                                string,
+                                unknown
+                            >;
                             const turn = payload.turn as
                                 | { speaker?: string }
                                 | undefined;
                             return (
-                            <div
-                                key={event.id}
-                                className='bg-gray-700 rounded p-3 text-sm border-l-4 border-primary-500'
-                            >
-                                <div className='flex justify-between items-start mb-1'>
-                                    <span className='font-medium text-primary-300'>
-                                        {event.type}
-                                    </span>
-                                    <span className='text-xs text-gray-400'>
-                                        {new Date(
-                                            event.at,
-                                        ).toLocaleTimeString()}
-                                    </span>
+                                <div
+                                    key={event.id}
+                                    className='bg-gray-700 rounded p-3 text-sm border-l-4 border-primary-500'
+                                >
+                                    <div className='flex justify-between items-start mb-1'>
+                                        <span className='font-medium text-primary-300'>
+                                            {event.type}
+                                        </span>
+                                        <span className='text-xs text-gray-400'>
+                                            {new Date(
+                                                event.at,
+                                            ).toLocaleTimeString()}
+                                        </span>
+                                    </div>
+                                    {event.type === 'turn' &&
+                                        typeof turn?.speaker === 'string' && (
+                                            <div className='text-gray-300'>
+                                                <span className='text-gray-400'>
+                                                    Speaker:
+                                                </span>{' '}
+                                                {turn.speaker}
+                                            </div>
+                                        )}
+                                    {event.type === 'phase_changed' &&
+                                        typeof payload.phase === 'string' && (
+                                            <div className='text-gray-300'>
+                                                <span className='text-gray-400'>
+                                                    Phase:
+                                                </span>{' '}
+                                                {payload.phase}
+                                            </div>
+                                        )}
                                 </div>
-                                {event.type === 'turn' &&
-                                    typeof turn?.speaker === 'string' && (
-                                        <div className='text-gray-300'>
-                                            <span className='text-gray-400'>
-                                                Speaker:
-                                            </span>{' '}
-                                            {turn.speaker}
-                                        </div>
-                                    )}
-                                {event.type === 'phase_changed' &&
-                                    typeof payload.phase === 'string' && (
-                                        <div className='text-gray-300'>
-                                            <span className='text-gray-400'>
-                                                Phase:
-                                            </span>{' '}
-                                            {payload.phase}
-                                        </div>
-                                    )}
-                            </div>
                             );
                         })
                     }

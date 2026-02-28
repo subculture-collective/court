@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { CourtEvent } from '../types';
 
 interface ModerationQueueProps {
@@ -20,6 +20,7 @@ export function ModerationQueue({ events }: ModerationQueueProps) {
     const [filter, setFilter] = useState<
         'all' | 'pending' | 'approved' | 'rejected'
     >('pending');
+    const processedEventCountRef = useRef(0);
 
     const handleApprove = (id: string) => {
         setQueue(prev =>
@@ -42,11 +43,24 @@ export function ModerationQueue({ events }: ModerationQueueProps) {
     };
 
     useEffect(() => {
+        if (events.length < processedEventCountRef.current) {
+            processedEventCountRef.current = 0;
+            setQueue([]);
+            return;
+        }
+
+        if (events.length === processedEventCountRef.current) {
+            return;
+        }
+
+        const newEvents = events.slice(processedEventCountRef.current);
+        processedEventCountRef.current = events.length;
+
         setQueue(prev => {
             const known = new Set(prev.map(item => item.id));
             const additions: FlaggedItem[] = [];
 
-            for (const event of events) {
+            for (const event of newEvents) {
                 if (known.has(event.id)) {
                     continue;
                 }
@@ -54,14 +68,17 @@ export function ModerationQueue({ events }: ModerationQueueProps) {
                 const payload = event.payload as Record<string, unknown>;
 
                 if (event.type === 'moderation_action') {
-                    const reasons = Array.isArray(payload.reasons) ? payload.reasons : [];
+                    const reasons =
+                        Array.isArray(payload.reasons) ? payload.reasons : [];
                     additions.push({
                         id: event.id,
                         type: 'statement',
                         content:
                             'Content was flagged and redacted by courtroom moderation.',
                         speaker:
-                            typeof payload.speaker === 'string' ? payload.speaker : undefined,
+                            typeof payload.speaker === 'string' ?
+                                payload.speaker
+                            :   undefined,
                         timestamp: event.at,
                         reason:
                             reasons.length > 0 ?
@@ -93,8 +110,36 @@ export function ModerationQueue({ events }: ModerationQueueProps) {
         });
     }, [events]);
 
-    const filteredQueue = queue.filter(
-        item => filter === 'all' || item.status === filter,
+    const queueStats = useMemo(() => {
+        let pending = 0;
+        let approved = 0;
+        let rejected = 0;
+
+        for (const item of queue) {
+            if (item.status === 'pending') {
+                pending += 1;
+            }
+
+            if (item.status === 'approved') {
+                approved += 1;
+            }
+
+            if (item.status === 'rejected') {
+                rejected += 1;
+            }
+        }
+
+        return {
+            total: queue.length,
+            pending,
+            approved,
+            rejected,
+        };
+    }, [queue]);
+
+    const filteredQueue = useMemo(
+        () => queue.filter(item => filter === 'all' || item.status === filter),
+        [filter, queue],
     );
 
     return (
@@ -103,30 +148,24 @@ export function ModerationQueue({ events }: ModerationQueueProps) {
             <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
                 <div className='bg-gray-800 rounded-lg p-4'>
                     <div className='text-sm text-gray-400'>Total</div>
-                    <div className='text-2xl font-bold'>{queue.length}</div>
+                    <div className='text-2xl font-bold'>{queueStats.total}</div>
                 </div>
                 <div className='bg-yellow-900/30 border border-yellow-700 rounded-lg p-4'>
                     <div className='text-sm text-gray-400'>Pending</div>
                     <div className='text-2xl font-bold text-yellow-400'>
-                        {queue.filter(item => item.status === 'pending').length}
+                        {queueStats.pending}
                     </div>
                 </div>
                 <div className='bg-green-900/30 border border-green-700 rounded-lg p-4'>
                     <div className='text-sm text-gray-400'>Approved</div>
                     <div className='text-2xl font-bold text-green-400'>
-                        {
-                            queue.filter(item => item.status === 'approved')
-                                .length
-                        }
+                        {queueStats.approved}
                     </div>
                 </div>
                 <div className='bg-red-900/30 border border-red-700 rounded-lg p-4'>
                     <div className='text-sm text-gray-400'>Rejected</div>
                     <div className='text-2xl font-bold text-red-400'>
-                        {
-                            queue.filter(item => item.status === 'rejected')
-                                .length
-                        }
+                        {queueStats.rejected}
                     </div>
                 </div>
             </div>
