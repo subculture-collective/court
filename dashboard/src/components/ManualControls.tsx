@@ -2,6 +2,29 @@ import React, { useState } from 'react';
 
 const SESSION_RELOAD_DELAY_MS = 1500;
 
+const PHASE_OPTIONS = [
+    {
+        phase: 'witness_exam',
+        label: 'Start Witness Exam',
+        emoji: '👤',
+    },
+    {
+        phase: 'closings',
+        label: 'Start Closings',
+        emoji: '⚖️',
+    },
+    {
+        phase: 'verdict_vote',
+        label: 'Start Verdict Vote',
+        emoji: '🗳️',
+    },
+    {
+        phase: 'final_ruling',
+        label: 'Final Ruling',
+        emoji: '📜',
+    },
+] as const;
+
 interface ManualControlsProps {
     sessionId: string | null;
 }
@@ -23,11 +46,14 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
         setMessage(null);
 
         try {
-            const response = await fetch(`/api/court/sessions/${sessionId}/phase`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phase: targetPhase }),
-            });
+            const response = await fetch(
+                `/api/court/sessions/${sessionId}/phase`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phase: targetPhase }),
+                },
+            );
 
             if (!response.ok) {
                 throw new Error(`Action failed: ${response.statusText}`);
@@ -69,10 +95,7 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
             });
 
             // Reload page to connect to new session
-            setTimeout(
-                () => window.location.reload(),
-                SESSION_RELOAD_DELAY_MS,
-            );
+            setTimeout(() => window.location.reload(), SESSION_RELOAD_DELAY_MS);
         } catch (err) {
             setMessage({ type: 'error', text: (err as Error).message });
         } finally {
@@ -118,28 +141,7 @@ export function ManualControls({ sessionId }: ManualControlsProps) {
                         Phase Control
                     </h2>
                     <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-                        {[
-                            {
-                                phase: 'witness_exam',
-                                label: 'Start Witness Exam',
-                                emoji: '👤',
-                            },
-                            {
-                                phase: 'closings',
-                                label: 'Start Closings',
-                                emoji: '⚖️',
-                            },
-                            {
-                                phase: 'verdict_vote',
-                                label: 'Start Verdict Vote',
-                                emoji: '🗳️',
-                            },
-                            {
-                                phase: 'final_ruling',
-                                label: 'Final Ruling',
-                                emoji: '📜',
-                            },
-                        ].map(({ phase, label, emoji }) => (
+                        {PHASE_OPTIONS.map(({ phase, label, emoji }) => (
                             <button
                                 key={phase}
                                 onClick={() => handleAdvancePhase(phase)}

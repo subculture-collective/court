@@ -6,6 +6,7 @@ const RECONNECT_DELAY_MS = 3000;
 export function useSSE(
     sessionId: string | null,
     onEvent: (event: CourtEvent) => void,
+    onSnapshot?: (payload: Record<string, unknown>) => void,
 ) {
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -50,9 +51,13 @@ export function useSSE(
             es.onmessage = e => {
                 try {
                     const msg = JSON.parse(e.data) as SSEMessage;
-                    if (msg.type !== 'snapshot') {
-                        onEvent(msg as CourtEvent);
+
+                    if (msg.type === 'snapshot') {
+                        onSnapshot?.(msg.payload);
+                        return;
                     }
+
+                    onEvent(msg as CourtEvent);
                 } catch (err) {
                     console.error('Failed to parse SSE event:', err);
                 }
@@ -61,7 +66,7 @@ export function useSSE(
             console.error('Failed to create EventSource:', err);
             setError('Failed to connect to event stream');
         }
-    }, [onEvent, sessionId]);
+    }, [onEvent, onSnapshot, sessionId]);
 
     useEffect(() => {
         if (!sessionId) return;
