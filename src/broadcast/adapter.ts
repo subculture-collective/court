@@ -6,6 +6,7 @@
  */
 
 import type { CourtPhase } from '../types.js';
+import { logger } from '../logger.js';
 
 // ---------------------------------------------------------------------------
 // Adapter Interface
@@ -105,14 +106,14 @@ export async function createBroadcastAdapterFromEnv(): Promise<BroadcastAdapter>
                     await import('./obs-adapter.js');
                 return new OBSWebSocketAdapter();
             } catch (err) {
-                console.warn(
+                logger.warn(
                     `[broadcast] Failed to load OBS adapter: ${err}. Using noop.`,
                 );
                 return new NoopBroadcastAdapter();
             }
 
         default:
-            console.warn(
+            logger.warn(
                 `[broadcast] Unknown provider: ${provider}. Using noop.`,
             );
             return new NoopBroadcastAdapter();
@@ -163,7 +164,7 @@ export async function safeBroadcastHook(
         const latencyMs = Date.now() - startTime;
         const errorMsg = err instanceof Error ? err.message : String(err);
 
-        console.error(
+        logger.error(
             `[broadcast] Hook failed: type=${hookType} latencyMs=${latencyMs} error=${errorMsg}`,
         );
 

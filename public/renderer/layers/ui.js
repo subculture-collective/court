@@ -6,11 +6,18 @@
  * they compose with the rest of the scene graph (camera, effects, etc.).
  */
 
-const DIALOGUE_BOX_ALPHA = 0.82;
-const DIALOGUE_BOX_COLOR = 0x0e1422;
-const DIALOGUE_BOX_RADIUS = 8;
-const NAMEPLATE_BG = 0x1a2540;
-const NAMEPLATE_RADIUS = 6;
+import {
+    DIALOGUE_BOX_ALPHA,
+    DIALOGUE_BOX_COLOR,
+    DIALOGUE_BOX_RADIUS,
+    NAMEPLATE_BG,
+    NAMEPLATE_RADIUS,
+    TEXT_SPEAKER,
+    TEXT_DIALOGUE,
+    TEXT_NAMEPLATE,
+    TEXT_PHASE_BADGE,
+    PHASE_BADGE_BG,
+} from '../theme.js';
 
 /**
  * @param {import('../stage.js').RendererStage} stage
@@ -29,7 +36,7 @@ export function initUI(stage) {
     const speakerText = new PIXI.Text({
         text: '',
         style: {
-            fill: 0xa5b4fc,
+            fill: TEXT_SPEAKER,
             fontSize: 13,
             fontFamily: 'Inter, system-ui, sans-serif',
             fontWeight: '600',
@@ -41,7 +48,7 @@ export function initUI(stage) {
     const dialogueText = new PIXI.Text({
         text: '',
         style: {
-            fill: 0xf8fafc,
+            fill: TEXT_DIALOGUE,
             fontSize: 15,
             fontFamily: 'Inter, system-ui, sans-serif',
             wordWrap: true,
@@ -63,7 +70,7 @@ export function initUI(stage) {
     const nameplateText = new PIXI.Text({
         text: '',
         style: {
-            fill: 0xd9e6ff,
+            fill: TEXT_NAMEPLATE,
             fontSize: 12,
             fontFamily: 'Inter, system-ui, sans-serif',
             fontWeight: '600',
@@ -83,7 +90,7 @@ export function initUI(stage) {
     const phaseText = new PIXI.Text({
         text: 'phase: idle',
         style: {
-            fill: 0x9da2b6,
+            fill: TEXT_PHASE_BADGE,
             fontSize: 11,
             fontFamily: 'monospace',
         },
@@ -121,7 +128,7 @@ export function initUI(stage) {
         const pbH = 22;
         phaseContainer.position.set(w - pbW - padding, padding);
         phaseBg.clear();
-        phaseBg.beginFill(0x14141d, 0.85);
+        phaseBg.beginFill(PHASE_BADGE_BG, 0.85);
         phaseBg.drawRoundedRect(0, 0, pbW, pbH, 4);
         phaseBg.endFill();
     }

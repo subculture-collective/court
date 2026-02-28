@@ -7,15 +7,30 @@
  * rectangle is drawn; when a sprite texture is set, it replaces the rectangle.
  */
 
+import {
+    ROLE_COLOR_JUDGE,
+    ROLE_COLOR_PROSECUTOR,
+    ROLE_COLOR_DEFENSE,
+    ROLE_COLOR_WITNESS,
+    ROLE_COLOR_BAILIFF,
+    ACTIVE_TINT,
+    DEFAULT_TINT,
+    ACTIVE_ALPHA,
+    INACTIVE_ALPHA,
+    TEXT_LABEL_DIM,
+    TEXT_NAME_LABEL,
+    PLACEHOLDER_OUTLINE,
+} from '../theme.js';
+
 /** Default layout positions (proportional to canvas size). */
 const ROLE_POSITIONS = {
-    judge: { x: 0.5, y: 0.12, w: 0.1, h: 0.16, color: 0xa08040 },
-    prosecutor: { x: 0.85, y: 0.38, w: 0.1, h: 0.2, color: 0x7b4040 },
-    defense: { x: 0.13, y: 0.38, w: 0.1, h: 0.2, color: 0x405a7b },
-    witness_1: { x: 0.64, y: 0.28, w: 0.08, h: 0.14, color: 0x4f6f50 },
-    witness_2: { x: 0.56, y: 0.28, w: 0.08, h: 0.14, color: 0x4f6f50 },
-    witness_3: { x: 0.72, y: 0.28, w: 0.08, h: 0.14, color: 0x4f6f50 },
-    bailiff: { x: 0.36, y: 0.3, w: 0.07, h: 0.14, color: 0x555566 },
+    judge: { x: 0.5, y: 0.12, w: 0.1, h: 0.16, color: ROLE_COLOR_JUDGE },
+    prosecutor: { x: 0.85, y: 0.38, w: 0.1, h: 0.2, color: ROLE_COLOR_PROSECUTOR },
+    defense: { x: 0.13, y: 0.38, w: 0.1, h: 0.2, color: ROLE_COLOR_DEFENSE },
+    witness_1: { x: 0.64, y: 0.28, w: 0.08, h: 0.14, color: ROLE_COLOR_WITNESS },
+    witness_2: { x: 0.56, y: 0.28, w: 0.08, h: 0.14, color: ROLE_COLOR_WITNESS },
+    witness_3: { x: 0.72, y: 0.28, w: 0.08, h: 0.14, color: ROLE_COLOR_WITNESS },
+    bailiff: { x: 0.36, y: 0.3, w: 0.07, h: 0.14, color: ROLE_COLOR_BAILIFF },
 };
 
 /** Recognised pose keys — pose sprites are resolved via asset lookup. */
@@ -23,10 +38,6 @@ export const POSES = ['idle', 'talk', 'point', 'slam', 'think', 'shock'];
 
 /** Recognised face overlay keys. */
 export const FACE_OVERLAYS = ['neutral', 'angry', 'happy', 'surprised', 'sweating'];
-
-const ACTIVE_TINT = 0xffdd44;
-const INACTIVE_ALPHA = 0.55;
-const ACTIVE_ALPHA = 1.0;
 
 /**
  * @param {import('../stage.js').RendererStage} stage
@@ -77,7 +88,7 @@ export function initCharacters(stage) {
         const label = new PIXI.Text({
             text: role.replace(/_/g, ' ').toUpperCase(),
             style: {
-                fill: 0xcccccc,
+                fill: TEXT_LABEL_DIM,
                 fontSize: 9,
                 fontFamily: 'monospace',
                 align: 'center',
@@ -89,7 +100,7 @@ export function initCharacters(stage) {
         const nameLabel = new PIXI.Text({
             text: '',
             style: {
-                fill: 0xeeeeee,
+                fill: TEXT_NAME_LABEL,
                 fontSize: 10,
                 fontFamily: 'Inter, system-ui, sans-serif',
                 fontWeight: '600',
@@ -133,7 +144,7 @@ export function initCharacters(stage) {
                 gfx.beginFill(slot.color, 0.6);
                 gfx.drawRoundedRect(0, 0, sw, sh, 4);
                 gfx.endFill();
-                gfx.lineStyle(1, 0x888888, 0.3);
+                gfx.lineStyle(1, PLACEHOLDER_OUTLINE, 0.3);
                 gfx.drawRoundedRect(0, 0, sw, sh, 4);
                 gfx.lineStyle(0);
             }
@@ -213,7 +224,7 @@ export function initCharacters(stage) {
      * @param {number} color      Hex tint (e.g. 0xff0000 for damage flash)
      * @param {number} durationMs Flash duration in milliseconds
      */
-    function flashCharacter(role, color = 0xffffff, durationMs = 120) {
+    function flashCharacter(role, color = DEFAULT_TINT, durationMs = 120) {
         const entry = slots[role];
         if (!entry) return;
 
@@ -250,7 +261,7 @@ export function initCharacters(stage) {
             if (isActive) {
                 entry.gfx.tint = ACTIVE_TINT;
             } else {
-                entry.gfx.tint = 0xffffff;
+                entry.gfx.tint = DEFAULT_TINT;
             }
 
             const name = roleNames?.[role];

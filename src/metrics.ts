@@ -222,50 +222,53 @@ export function instrumentCourtSessionStore(
         });
     };
 
+    function wrapWithMetrics<Args extends unknown[], R>(
+        operation: string,
+        fn: (...args: Args) => Promise<R>,
+        onSuccess?: (result: R) => void,
+    ): (...args: Args) => Promise<R> {
+        return async (...args: Args): Promise<R> => {
+            try {
+                const result = await fn(...args);
+                onSuccess?.(result);
+                return result;
+            } catch (error) {
+                recordStoreError(operation, error);
+                throw error;
+            }
+        };
+    }
+
     scheduleSessionStatusSync();
 
     return {
-        async createSession(input) {
-            try {
-                const session = await baseStore.createSession(input);
+        createSession: wrapWithMetrics(
+            'create_session',
+            input => baseStore.createSession(input),
+            () => {
                 sessionLifecycleTotal.inc({ event: 'created' });
                 scheduleSessionStatusSync();
-                return session;
-            } catch (error) {
-                recordStoreError('create_session', error);
-                throw error;
-            }
-        },
+            },
+        ),
 
-        async listSessions() {
-            try {
-                return await baseStore.listSessions();
-            } catch (error) {
-                recordStoreError('list_sessions', error);
-                throw error;
-            }
-        },
+        listSessions: wrapWithMetrics(
+            'list_sessions',
+            () => baseStore.listSessions(),
+        ),
 
-        async getSession(sessionId) {
-            try {
-                return await baseStore.getSession(sessionId);
-            } catch (error) {
-                recordStoreError('get_session', error);
-                throw error;
-            }
-        },
+        getSession: wrapWithMetrics(
+            'get_session',
+            sessionId => baseStore.getSession(sessionId),
+        ),
 
-        async startSession(sessionId) {
-            try {
-                const session = await baseStore.startSession(sessionId);
+        startSession: wrapWithMetrics(
+            'start_session',
+            sessionId => baseStore.startSession(sessionId),
+            () => {
                 sessionLifecycleTotal.inc({ event: 'started' });
                 scheduleSessionStatusSync();
-                return session;
-            } catch (error) {
-                recordStoreError('start_session', error);
-                throw error;
-            }
-        },
+            },
+        ),
 
         async setPhase(sessionId, phase, phaseDurationMs) {
             try {
@@ -285,76 +288,52 @@ export function instrumentCourtSessionStore(
             }
         },
 
-        async addTurn(input) {
-            try {
-                return await baseStore.addTurn(input);
-            } catch (error) {
-                recordStoreError('add_turn', error);
-                throw error;
-            }
-        },
+        addTurn: wrapWithMetrics(
+            'add_turn',
+            input => baseStore.addTurn(input),
+        ),
 
-        async castVote(input) {
-            try {
-                return await baseStore.castVote(input);
-            } catch (error) {
-                recordStoreError('cast_vote', error);
-                throw error;
-            }
-        },
+        castVote: wrapWithMetrics(
+            'cast_vote',
+            input => baseStore.castVote(input),
+        ),
 
-        async recordFinalRuling(input) {
-            try {
-                return await baseStore.recordFinalRuling(input);
-            } catch (error) {
-                recordStoreError('record_final_ruling', error);
-                throw error;
-            }
-        },
+        recordFinalRuling: wrapWithMetrics(
+            'record_final_ruling',
+            input => baseStore.recordFinalRuling(input),
+        ),
 
-        async recordRecap(input) {
-            try {
-                await baseStore.recordRecap(input);
-            } catch (error) {
-                recordStoreError('record_recap', error);
-                throw error;
-            }
-        },
+        recordRecap: wrapWithMetrics(
+            'record_recap',
+            input => baseStore.recordRecap(input),
+        ),
 
-        async completeSession(sessionId) {
-            try {
-                const session = await baseStore.completeSession(sessionId);
+        completeSession: wrapWithMetrics(
+            'complete_session',
+            sessionId => baseStore.completeSession(sessionId),
+            () => {
                 sessionLifecycleTotal.inc({ event: 'completed' });
                 scheduleSessionStatusSync();
-                return session;
-            } catch (error) {
-                recordStoreError('complete_session', error);
-                throw error;
-            }
-        },
+            },
+        ),
 
-        async failSession(sessionId, reason) {
-            try {
-                const session = await baseStore.failSession(sessionId, reason);
+        failSession: wrapWithMetrics(
+            'fail_session',
+            (sessionId, reason) =>
+                baseStore.failSession(sessionId, reason),
+            () => {
                 sessionLifecycleTotal.inc({ event: 'failed' });
                 scheduleSessionStatusSync();
-                return session;
-            } catch (error) {
-                recordStoreError('fail_session', error);
-                throw error;
-            }
-        },
+            },
+        ),
 
-        async recoverInterruptedSessions() {
-            try {
-                const ids = await baseStore.recoverInterruptedSessions();
+        recoverInterruptedSessions: wrapWithMetrics(
+            'recover_interrupted_sessions',
+            () => baseStore.recoverInterruptedSessions(),
+            () => {
                 scheduleSessionStatusSync();
-                return ids;
-            } catch (error) {
-                recordStoreError('recover_interrupted_sessions', error);
-                throw error;
-            }
-        },
+            },
+        ),
 
         subscribe(sessionId, handler) {
             return baseStore.subscribe(sessionId, handler);

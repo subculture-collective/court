@@ -1,6 +1,9 @@
 /**
  * OBS WebSocket adapter for broadcast automation.
  *
+ * TODO(phase-8): Implement actual WebSocket connection using obs-websocket-js.
+ * All methods currently log intent but do not send real OBS commands.
+ *
  * Connects to OBS Studio via WebSocket 5.x protocol.
  * Requires obs-websocket-js package to be installed.
  *

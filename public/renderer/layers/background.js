@@ -7,12 +7,14 @@
  */
 
 import { STAGE_WIDTH, STAGE_HEIGHT } from '../stage.js';
-
-const BENCH_COLOR = 0x3b2f1e;
-const PODIUM_COLOR = 0x2d2417;
-const FLOOR_COLOR = 0x1a1428;
-const WALL_COLOR = 0x0e1422;
-const LINE_COLOR = 0x4a3f2e;
+import {
+    BENCH_COLOR,
+    PODIUM_COLOR,
+    FLOOR_COLOR,
+    WALL_COLOR,
+    LINE_COLOR,
+    TEXT_PLACEHOLDER_DIM,
+} from '../theme.js';
 
 /**
  * @param {import('../stage.js').RendererStage} stage
@@ -26,7 +28,7 @@ export function initBackground(stage) {
     const label = new PIXI.Text({
         text: 'COURTROOM BACKGROUND (placeholder)',
         style: {
-            fill: 0x555566,
+            fill: TEXT_PLACEHOLDER_DIM,
             fontSize: 11,
             fontFamily: 'monospace',
         },

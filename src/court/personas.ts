@@ -63,7 +63,7 @@ function rolePrompt(role: CourtRole, genre?: GenreTag): string {
     return COURT_ROLE_PROMPTS[role] ?? COURT_ROLE_PROMPTS.witness;
 }
 
-export function buildCourtSystemPrompt(input: {
+export function buildCourtSystemPrompt(promptConfig: {
     agentId: AgentId;
     role: CourtRole;
     topic: string;
@@ -72,7 +72,7 @@ export function buildCourtSystemPrompt(input: {
     history: string;
     genre?: GenreTag; // Phase 3: genre-specific prompt variations
 }): string {
-    const { agentId, role, topic, caseType, phase, history, genre } = input;
+    const { agentId, role, topic, caseType, phase, history, genre } = promptConfig;
     const agent = AGENTS[agentId];
 
     const verdictLabels =

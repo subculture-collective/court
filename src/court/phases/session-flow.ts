@@ -76,7 +76,7 @@ export interface SessionRuntimeContext {
     recapCadence: number;
 }
 
-function bestOf(votes: Record<string, number>, fallback: string): string {
+function mostVotedChoice(votes: Record<string, number>, fallback: string): string {
     const entries = Object.entries(votes);
     if (entries.length === 0) return fallback;
 
@@ -476,11 +476,11 @@ export async function runFinalRulingPhase(
         );
     }
 
-    const winningVerdict = bestOf(
+    const winningVerdict = mostVotedChoice(
         latest.metadata.verdictVotes,
         verdictChoices[0],
     );
-    const winningSentence = bestOf(
+    const winningSentence = mostVotedChoice(
         latest.metadata.sentenceVotes,
         latest.metadata.sentenceOptions[0],
     );
