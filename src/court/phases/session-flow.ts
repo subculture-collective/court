@@ -347,7 +347,7 @@ export async function runWitnessExamPhase(
 
         // 2. Direct examination
         for (let q = 0; q < script.directRounds; q++) {
-            const prosecutorTurn = await context.generateBudgetedTurn({
+            await context.generateBudgetedTurn({
                 store: context.store,
                 session: context.session,
                 speaker: prosecutor,
