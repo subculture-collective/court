@@ -13,6 +13,8 @@ export type AgentId =
     | 'blackquill'
     | 'trucy';
 
+/** Archetype-level role classification used for casting pools.
+ * Distinct from CourtRole: 'witness' here maps to the witness_1/2/3 slots in CourtRole. */
 export type RoleArchetype = 'judge' | 'prosecutor' | 'defense' | 'witness' | 'bailiff';
 
 export interface AgentConfig {
