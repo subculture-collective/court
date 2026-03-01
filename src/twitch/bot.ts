@@ -10,6 +10,7 @@ import {
     CommandRateLimiter,
     DEFAULT_COMMAND_RATE_LIMIT,
 } from './command-rate-limit.js';
+import { parseCommand as parseChatCommand } from './commands.js';
 
 export interface BotConfig {
     channel: string;
@@ -23,7 +24,7 @@ export interface ParsedCommand {
     action: 'press' | 'present' | 'vote' | 'sentence';
     username: string;
     timestamp: number;
-    params?: Record<string, any>;
+    params: Record<string, any>;
 }
 
 export interface RedemptionEvent {
@@ -123,19 +124,16 @@ export class TwitchBot {
         message: string,
         username: string,
     ): ParsedCommand | null {
-        // Check rate limit first
         const rateLimitCheck = this.commandRateLimiter.check(username, message);
         if (!rateLimitCheck.allowed) {
             console.warn(
-                `[Twitch Bot] Command rate limited for ${username}: ${rateLimitCheck.reason}`,
+                `[Twitch Bot] Rate limited ${username}: ${rateLimitCheck.reason}`,
             );
             return null;
         }
 
-        // Will delegate to commands.ts parser
-        // For now, stub
-        console.log(`[Twitch Bot] Parsed command from ${username}: ${message}`);
-        return null;
+        const parsed = parseChatCommand(message, username);
+        return parsed as ParsedCommand | null;
     }
 
     /**
