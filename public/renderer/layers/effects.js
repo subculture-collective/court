@@ -22,8 +22,9 @@ const STAMP_DISPLAY_MS = 1200;
 
 /**
  * @param {import('../stage.js').RendererStage} stage
+ * @param {{ playSfx: (name: string) => void }} [audio]
  */
-export function initEffects(stage) {
+export function initEffects(stage, audio = { playSfx: () => {} }) {
     const { PIXI, effectsLayer, app } = stage;
 
     let shakeTimer = null;
@@ -195,6 +196,7 @@ export function initEffects(stage) {
      * Convenience: composite "objection" cue (stamp + flash + shake).
      */
     function objection() {
+        audio.playSfx('objection');
         flash({ color: OBJECTION_COLOR, alpha: 0.35 });
         shake({ intensity: 8, durationMs: 350 });
         stamp({ text: 'OBJECTION!', color: OBJECTION_COLOR });
@@ -204,6 +206,7 @@ export function initEffects(stage) {
      * Convenience: "hold it" cue.
      */
     function holdIt() {
+        audio.playSfx('hold_it');
         flash({ color: HOLD_IT_COLOR, alpha: 0.3 });
         stamp({ text: 'HOLD IT!', color: HOLD_IT_COLOR });
     }
@@ -212,6 +215,7 @@ export function initEffects(stage) {
      * Convenience: "take that" cue.
      */
     function takeThat() {
+        audio.playSfx('dramatic_sting');
         flash({ color: TAKE_THAT_COLOR, alpha: 0.3 });
         stamp({ text: 'TAKE THAT!', color: TAKE_THAT_COLOR });
     }
