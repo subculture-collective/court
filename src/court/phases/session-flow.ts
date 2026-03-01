@@ -23,12 +23,12 @@ const PHASE_DURATION_MS = {
 } as const;
 
 const PAUSE_MS = {
-    casePromptAfterCue: 1_200,
-    openingBetweenSides: 900,
-    witnessBetweenTurns: 600,
-    witnessBetweenCycles: 800,
-    recapLeadIn: 600,
-    closingBetweenSides: 800,
+    casePromptAfterCue: 2_000,
+    openingBetweenSides: 2_000,
+    witnessBetweenTurns: 2_500,
+    witnessBetweenCycles: 3_000,
+    recapLeadIn: 1_500,
+    closingBetweenSides: 2_000,
 } as const;
 
 const MAX_WITNESS_TURN_TOKENS = 260;
