@@ -42,7 +42,10 @@ export function initAudio() {
                         const sound = new Howl({
                             src: [path],
                             preload: true,
-                            onload: resolve,
+                            onload: () => {
+                                sounds.set(name, sound);
+                                resolve();
+                            },
                             onloaderror: () => {
                                 console.warn(
                                     `[Audio] Failed to load "${name}" (${path}) — continuing without it`,
@@ -50,7 +53,6 @@ export function initAudio() {
                                 resolve();
                             },
                         });
-                        sounds.set(name, sound);
                     } catch (err) {
                         console.warn(`[Audio] Error creating Howl for "${name}":`, err);
                         resolve();
@@ -69,7 +71,6 @@ export function initAudio() {
      * @param {string} name
      */
     function playSfx(name) {
-        if (!ready) return;
         const sound = sounds.get(name);
         if (sound) {
             sound.play();

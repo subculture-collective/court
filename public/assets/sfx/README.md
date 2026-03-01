@@ -1,6 +1,6 @@
-# assets/sfx — Sound Effect Files
+# public/assets/sfx — Sound Effect Files
 
-Place the following MP3 files here for SFX playback:
+Place the following MP3 files in `public/assets/sfx` for SFX playback in the browser:
 
 | File               | Used for                         | Suggested source                        |
 |--------------------|----------------------------------|-----------------------------------------|
