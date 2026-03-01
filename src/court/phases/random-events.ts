@@ -51,8 +51,12 @@ export const RANDOM_EVENTS: RandomEvent[] = [
  * Returns at most one event; returns null if none fire.
  */
 export function checkRandomEvent(rng: () => number = Math.random): RandomEvent | null {
-    // Shuffle catalogue so higher-probability events don't always win on ties
-    const shuffled = [...RANDOM_EVENTS].sort(() => rng() - 0.5);
+    // Fisher-Yates shuffle so higher-probability events don't always win on ties
+    const shuffled = [...RANDOM_EVENTS];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.min(i, Math.floor(rng() * (i + 1)));
+        [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+    }
     for (const event of shuffled) {
         if (rng() < event.probability) {
             return event;

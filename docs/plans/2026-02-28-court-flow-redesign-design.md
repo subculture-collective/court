@@ -124,7 +124,7 @@ Categories and intent:
 | `src/court/phases/session-flow.ts` | Rewrite `runWitnessExamPhase`; update `PAUSE_MS` constants |
 | `src/court/phases/witness-script.ts` | New — `buildWitnessScripts()`, `WitnessScript` type |
 | `src/court/phases/random-events.ts` | New — event catalogue, `checkRandomEvent()` |
-| `src/court/phases/objections.ts` | New — `checkObjection()` (organic flag check + classifier call + judge ruling) |
+| `src/court/phases/objections.ts` | New — `handleObjectionRound()` (organic flag check + classifier call + judge ruling) |
 | `src/llm/client.ts` | Rewrite `mockReply()` with randomised versatile lines |
 | Test files | New unit tests for script builder, random events, objection classifier |
 

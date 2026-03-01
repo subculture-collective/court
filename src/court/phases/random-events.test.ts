@@ -16,9 +16,11 @@ describe('checkRandomEvent', () => {
     });
 
     it('returns at most one event per call', () => {
-        // Even when rng fires everything, only one event is returned
+        // Even when rng fires everything, only one event is returned (never an array)
         const result = checkRandomEvent(() => 0.0);
-        assert.ok(result === null || typeof result.id === 'string');
+        assert.ok(
+            result === null || (!Array.isArray(result) && typeof result.id === 'string'),
+        );
     });
 
     it('all RANDOM_EVENTS have required fields', () => {

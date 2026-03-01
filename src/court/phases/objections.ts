@@ -48,6 +48,7 @@ export interface ObjectionRoundInput {
     store: CourtSessionStore;
     session: CourtSession;
     pause: (ms: number) => Promise<void>;
+    pauseMs: number;
 }
 
 /**
@@ -76,7 +77,7 @@ export async function handleObjectionRound(input: ObjectionRoundInput): Promise<
             role: input.objectingRole,
             userInstruction: `Object to the preceding testimony on grounds of ${objectionType}. Begin your turn with "OBJECTION:" followed by the type and a one-sentence explanation.`,
         });
-        await input.pause(600);
+        await input.pause(input.pauseMs);
     }
 
     // Judge always rules

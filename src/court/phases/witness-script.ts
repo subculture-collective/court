@@ -3,9 +3,12 @@ export interface WitnessScript {
     crossRounds: number;  // 2–5
 }
 
-export function buildWitnessScripts(witnessCount: number): WitnessScript[] {
+export function buildWitnessScripts(
+    witnessCount: number,
+    rng: () => number = Math.random,
+): WitnessScript[] {
     return Array.from({ length: witnessCount }, () => ({
-        directRounds: Math.floor(Math.random() * 5) + 3,
-        crossRounds: Math.floor(Math.random() * 4) + 2,
+        directRounds: Math.floor(rng() * 5) + 3,
+        crossRounds: Math.floor(rng() * 4) + 2,
     }));
 }
