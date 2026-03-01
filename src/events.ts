@@ -5,7 +5,13 @@
  * Use `assertEventPayload` to validate a raw `CourtEvent` at runtime.
  */
 
-import type { CourtEvent, CourtPhase, RenderDirective, CaseFile, WitnessStatement } from './types.js';
+import type {
+    CourtEvent,
+    CourtPhase,
+    RenderDirective,
+    CaseFile,
+    WitnessStatement,
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Payload interfaces
@@ -37,6 +43,14 @@ export interface TurnPayload {
         dialogue: string;
         createdAt: string;
     };
+    render?: {
+        sfx?: string[];
+        fx?: Array<{
+            type: 'flash' | 'shake' | 'freeze' | 'hit_stop';
+            params?: Record<string, any>;
+        }>;
+        stinger?: string;
+    };
 }
 
 export interface VoteUpdatedPayload {
@@ -51,6 +65,18 @@ export interface VoteClosedPayload {
     closedAt: string; // ISO 8601
     votes: Record<string, number>;
     nextPhase: CourtPhase;
+}
+
+export interface PressVoteUpdatedPayload {
+    statementNumber: number;
+    pressVotes: Record<number, number>;
+    phase: CourtPhase;
+}
+
+export interface PresentVoteUpdatedPayload {
+    evidenceId: string;
+    presentVotes: Record<string, number>;
+    phase: CourtPhase;
 }
 
 export interface WitnessResponseCappedPayload {
@@ -244,6 +270,29 @@ export function assertEventPayload(event: CourtEvent): void {
             ) {
                 throw new TypeError(
                     `vote_updated payload missing required fields: voteType, choice, verdictVotes, sentenceVotes`,
+                );
+            }
+            break;
+
+        case 'press_vote_updated':
+            if (
+                !hasStringKeys(payload, ['phase']) ||
+                typeof payload['statementNumber'] !== 'number' ||
+                !hasObjectKey(payload, 'pressVotes')
+            ) {
+                throw new TypeError(
+                    `press_vote_updated payload missing required fields: statementNumber (number), pressVotes (object), phase`,
+                );
+            }
+            break;
+
+        case 'present_vote_updated':
+            if (
+                !hasStringKeys(payload, ['phase', 'evidenceId']) ||
+                !hasObjectKey(payload, 'presentVotes')
+            ) {
+                throw new TypeError(
+                    `present_vote_updated payload missing required fields: evidenceId, presentVotes (object), phase`,
                 );
             }
             break;

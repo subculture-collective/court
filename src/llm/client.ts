@@ -1,17 +1,28 @@
 import type { LLMGenerateOptions } from '../types.js';
 
-const FALLBACK_MODEL = 'deepseek/deepseek-chat-v3-0324:free';
+const FALLBACK_MODELS = [
+    'google/gemma-3-27b-it:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'mistralai/mistral-small-3.1-24b-instruct:free',
+];
 
 function runtimeLLMConfig(env: NodeJS.ProcessEnv = process.env): {
     apiKey: string;
-    model: string;
+    models: string[];
     forceMock: boolean;
 } {
     const apiKey = (env.OPENROUTER_API_KEY ?? '').trim();
-    const model = (env.LLM_MODEL ?? FALLBACK_MODEL).trim() || FALLBACK_MODEL;
+    const modelsRaw = (env.LLM_MODELS ?? '').trim();
+    const models =
+        modelsRaw ?
+            modelsRaw
+                .split(',')
+                .map(m => m.trim())
+                .filter(Boolean)
+        :   FALLBACK_MODELS;
     const runningNodeTests = process.argv.includes('--test');
     const forceMock = env.LLM_MOCK === 'true' || runningNodeTests;
-    return { apiKey, model, forceMock };
+    return { apiKey, models, forceMock };
 }
 
 function extractFromXml(text: string): string {
@@ -56,25 +67,15 @@ function mockReply(prompt: string): string {
     return 'Order in the court. I acknowledge the point and move us to the next absurdly important matter.';
 }
 
-export async function llmGenerate(
-    options: LLMGenerateOptions,
-): Promise<string> {
-    const config = runtimeLLMConfig();
-    const {
-        messages,
-        model = config.model,
-        temperature = 0.7,
-        maxTokens = 300,
-    } = options;
-
-    const latestUserMessage = [...messages]
-        .reverse()
-        .find(message => message.role === 'user')?.content;
-
-    if (!config.apiKey || config.forceMock) {
-        return mockReply(latestUserMessage ?? '');
-    }
-
+async function tryModelGenerate(
+    model: string,
+    apiKey: string,
+    messages: LLMGenerateOptions['messages'],
+    temperature: number,
+    maxTokens: number,
+): Promise<
+    { success: true; text: string } | { success: false; reason: string }
+> {
     try {
         const response = await fetch(
             'https://openrouter.ai/api/v1/chat/completions',
@@ -82,7 +83,7 @@ export async function llmGenerate(
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${config.apiKey}`,
+                    Authorization: `Bearer ${apiKey}`,
                 },
                 body: JSON.stringify({
                     model,
@@ -95,11 +96,10 @@ export async function llmGenerate(
 
         if (!response.ok) {
             const body = await response.text();
-            // eslint-disable-next-line no-console
-            console.warn(
-                `OpenRouter request failed (${response.status}); falling back to mock dialogue: ${body.slice(0, 160)}`,
-            );
-            return mockReply(latestUserMessage ?? '');
+            return {
+                success: false,
+                reason: `HTTP ${response.status}: ${body.slice(0, 100)}`,
+            };
         }
 
         const data = (await response.json()) as {
@@ -111,19 +111,65 @@ export async function llmGenerate(
         const sanitized = sanitizeDialogue(text);
 
         if (!sanitized) {
-            // eslint-disable-next-line no-console
-            console.warn(
-                `OpenRouter response returned empty content for model=${model}; falling back to mock dialogue.`,
-            );
-            return mockReply(latestUserMessage ?? '');
+            return {
+                success: false,
+                reason: 'Empty content after sanitization',
+            };
         }
 
-        return sanitized;
+        return { success: true, text: sanitized };
     } catch (error) {
-        // eslint-disable-next-line no-console
-        console.warn(
-            `OpenRouter request threw; falling back to mock dialogue: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        return {
+            success: false,
+            reason: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+
+export async function llmGenerate(
+    options: LLMGenerateOptions,
+): Promise<string> {
+    const config = runtimeLLMConfig();
+    const { messages, temperature = 0.7, maxTokens = 300 } = options;
+
+    const latestUserMessage = [...messages]
+        .reverse()
+        .find(message => message.role === 'user')?.content;
+
+    if (!config.apiKey || config.forceMock) {
         return mockReply(latestUserMessage ?? '');
     }
+
+    // Try each model in sequence until one succeeds
+    const errors: string[] = [];
+    for (const model of config.models) {
+        const result = await tryModelGenerate(
+            model,
+            config.apiKey,
+            messages,
+            temperature,
+            maxTokens,
+        );
+
+        if (result.success) {
+            if (errors.length > 0) {
+                // eslint-disable-next-line no-console
+                console.info(
+                    `[llm] model="${model}" succeeded after ${errors.length} failures`,
+                );
+            }
+            return result.text;
+        }
+
+        errors.push(`${model}: ${result.reason}`);
+        // eslint-disable-next-line no-console
+        console.warn(`[llm] model="${model}" failed: ${result.reason}`);
+    }
+
+    // All models failed, fall back to mock
+    // eslint-disable-next-line no-console
+    console.warn(
+        `[llm] All ${config.models.length} models failed; falling back to mock dialogue. Errors:\n${errors.join('\n')}`,
+    );
+    return mockReply(latestUserMessage ?? '');
 }

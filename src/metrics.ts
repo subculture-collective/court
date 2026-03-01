@@ -126,7 +126,10 @@ const SESSION_STATUSES: SessionStatus[] = [
 function sanitizeLabel(value: string, fallback = 'unknown'): string {
     const trimmed = value.trim();
     if (!trimmed) return fallback;
-    return trimmed.toLowerCase().replace(/[^a-z0-9_:-]/g, '_').slice(0, 64);
+    return trimmed
+        .toLowerCase()
+        .replace(/[^a-z0-9_:-]/g, '_')
+        .slice(0, 64);
 }
 
 function classifyErrorType(error: unknown): string {
@@ -182,7 +185,9 @@ export function recordSseConnectionClosed(
     sseConnectionDurationSeconds.observe(elapsedSecondsSince(openedAt));
 }
 
-async function syncSessionStatusGauges(store: CourtSessionStore): Promise<void> {
+async function syncSessionStatusGauges(
+    store: CourtSessionStore,
+): Promise<void> {
     const sessions = await store.listSessions();
     const counts = new Map<SessionStatus, number>(
         SESSION_STATUSES.map(status => [status, 0]),
@@ -251,14 +256,12 @@ export function instrumentCourtSessionStore(
             },
         ),
 
-        listSessions: wrapWithMetrics(
-            'list_sessions',
-            () => baseStore.listSessions(),
+        listSessions: wrapWithMetrics('list_sessions', () =>
+            baseStore.listSessions(),
         ),
 
-        getSession: wrapWithMetrics(
-            'get_session',
-            sessionId => baseStore.getSession(sessionId),
+        getSession: wrapWithMetrics('get_session', sessionId =>
+            baseStore.getSession(sessionId),
         ),
 
         startSession: wrapWithMetrics(
@@ -288,24 +291,18 @@ export function instrumentCourtSessionStore(
             }
         },
 
-        addTurn: wrapWithMetrics(
-            'add_turn',
-            input => baseStore.addTurn(input),
+        addTurn: wrapWithMetrics('add_turn', input => baseStore.addTurn(input)),
+
+        castVote: wrapWithMetrics('cast_vote', input =>
+            baseStore.castVote(input),
         ),
 
-        castVote: wrapWithMetrics(
-            'cast_vote',
-            input => baseStore.castVote(input),
+        recordFinalRuling: wrapWithMetrics('record_final_ruling', input =>
+            baseStore.recordFinalRuling(input),
         ),
 
-        recordFinalRuling: wrapWithMetrics(
-            'record_final_ruling',
-            input => baseStore.recordFinalRuling(input),
-        ),
-
-        recordRecap: wrapWithMetrics(
-            'record_recap',
-            input => baseStore.recordRecap(input),
+        recordRecap: wrapWithMetrics('record_recap', input =>
+            baseStore.recordRecap(input),
         ),
 
         completeSession: wrapWithMetrics(
@@ -319,8 +316,7 @@ export function instrumentCourtSessionStore(
 
         failSession: wrapWithMetrics(
             'fail_session',
-            (sessionId, reason) =>
-                baseStore.failSession(sessionId, reason),
+            (sessionId, reason) => baseStore.failSession(sessionId, reason),
             () => {
                 sessionLifecycleTotal.inc({ event: 'failed' });
                 scheduleSessionStatusSync();
@@ -341,6 +337,10 @@ export function instrumentCourtSessionStore(
 
         emitEvent(sessionId, type, payload) {
             baseStore.emitEvent(sessionId, type, payload);
+        },
+
+        patchMetadata(sessionId, patch) {
+            return baseStore.patchMetadata(sessionId, patch);
         },
     };
 }
