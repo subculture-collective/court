@@ -14,10 +14,10 @@ function buildArchetypePool(archetype: RoleArchetype, source: AgentId[]): AgentI
     return source.filter(id => AGENTS[id].roleArchetypes.includes(archetype));
 }
 
-function pickOne(pool: AgentId[], used: Set<AgentId>): AgentId {
+function pickOne(pool: AgentId[], used: Set<AgentId>, source: AgentId[]): AgentId {
     const available = shuffle(pool).filter(id => !used.has(id));
     if (available.length === 0) {
-        const fallback = AGENT_IDS.find(id => !used.has(id));
+        const fallback = source.find(id => !used.has(id));
         if (!fallback) throw new Error('Roster exhausted — not enough characters for all roles');
         used.add(fallback);
         return fallback;
@@ -35,10 +35,10 @@ function pickMany(pool: AgentId[], used: Set<AgentId>, max: number): AgentId[] {
 
 function assignFromPool(source: AgentId[]): CourtRoleAssignments {
     const used = new Set<AgentId>();
-    const judge = pickOne(buildArchetypePool('judge', source), used);
-    const prosecutor = pickOne(buildArchetypePool('prosecutor', source), used);
-    const defense = pickOne(buildArchetypePool('defense', source), used);
-    const bailiff = pickOne(buildArchetypePool('bailiff', source), used);
+    const judge = pickOne(buildArchetypePool('judge', source), used, source);
+    const prosecutor = pickOne(buildArchetypePool('prosecutor', source), used, source);
+    const defense = pickOne(buildArchetypePool('defense', source), used, source);
+    const bailiff = pickOne(buildArchetypePool('bailiff', source), used, source);
     const witnesses = pickMany(buildArchetypePool('witness', source), used, 3);
     return { judge, prosecutor, defense, witnesses, bailiff };
 }
