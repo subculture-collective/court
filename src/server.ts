@@ -26,6 +26,7 @@ import {
     RedemptionRateLimiter,
     DEFAULT_REDEMPTION_RATE_LIMIT,
 } from './twitch/eventsub.js';
+import { initTwitchBot } from './twitch/bot.js';
 import {
     elapsedSecondsSince,
     instrumentCourtSessionStore,
@@ -1005,6 +1006,24 @@ export async function createServerApp(
         sentenceWindowMs,
         recorder,
         replay,
+    });
+
+    // Start Twitch bot (noop if credentials absent)
+    const twitchBot = initTwitchBot({
+        channel: process.env.TWITCH_CHANNEL ?? '',
+        botToken: process.env.TWITCH_BOT_TOKEN ?? '',
+        clientId: process.env.TWITCH_CLIENT_ID ?? '',
+        clientSecret: process.env.TWITCH_CLIENT_SECRET ?? '',
+        apiBaseUrl: `http://localhost:${process.env.PORT ?? 3000}`,
+        getActiveSessionId: async () => {
+            const sessions = await store.listSessions();
+            const running = sessions.find(s => s.status === 'running');
+            return running?.id ?? null;
+        },
+    });
+
+    twitchBot.start().catch(err => {
+        console.warn('[Twitch Bot] Failed to start:', err);
     });
 
     registerStaticAndSpaRoutes(app, {
