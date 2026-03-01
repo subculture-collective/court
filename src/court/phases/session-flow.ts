@@ -28,12 +28,19 @@ const PHASE_DURATION_MS = {
 
 const PAUSE_MS = {
     casePromptAfterCue: 2_000,
-    openingBetweenSides: 2_000,
-    witnessBetweenTurns: 2_500,
     witnessBetweenCycles: 3_000,
     recapLeadIn: 1_500,
-    closingBetweenSides: 2_000,
 } as const;
+
+const DISPLAY_CPM = 200;
+const PREFETCH_RATIO = 0.8;
+
+/** Returns how long to pause before starting the next LLM call, based on how long
+ * the client will spend displaying the given dialogue at DISPLAY_CPM characters/min.
+ * Fires at PREFETCH_RATIO of display time so the response arrives just as the display ends. */
+function displayPauseMs(dialogue: string): number {
+    return (dialogue.length / DISPLAY_CPM) * 60_000 * PREFETCH_RATIO;
+}
 
 const MAX_WITNESS_TURN_TOKENS = 260;
 const MAX_WITNESS_ROLE_INDEX = 3;
@@ -244,7 +251,7 @@ export async function runOpeningsPhase(
         }),
     );
 
-    await context.generateBudgetedTurn({
+    const prosecutorOpening = await context.generateBudgetedTurn({
         store: context.store,
         session: context.session,
         speaker: prosecutor,
@@ -252,7 +259,7 @@ export async function runOpeningsPhase(
         userInstruction:
             'Deliver your opening statement and explain why the court should lean toward conviction/liability.',
     });
-    await context.pause(PAUSE_MS.openingBetweenSides);
+    await context.pause(displayPauseMs(prosecutorOpening.dialogue));
 
     await context.generateBudgetedTurn({
         store: context.store,
@@ -276,7 +283,7 @@ async function runRandomEvent(
     prosecutorId: AgentId,
     defenseId: AgentId,
     isDirectExam: boolean,
-): Promise<void> {
+): Promise<CourtTurn> {
     const speaker: EventSpeaker = event.speaker;
     let agentId: AgentId;
     let role: CourtRole;
@@ -296,7 +303,7 @@ async function runRandomEvent(
         role = isDirectExam ? 'defense' : 'prosecutor';
     }
 
-    await context.generateBudgetedTurn({
+    return context.generateBudgetedTurn({
         store: context.store,
         session: context.session,
         speaker: agentId,
@@ -335,26 +342,25 @@ export async function runWitnessExamPhase(
         const witnessConfig = AGENTS[witness];
 
         // 1. Bailiff introduces witness
-        await context.pause(PAUSE_MS.witnessBetweenTurns);
-        await context.generateBudgetedTurn({
+        const bailiffTurn = await context.generateBudgetedTurn({
             store: context.store,
             session: context.session,
             speaker: bailiff,
             role: 'bailiff',
             userInstruction: `Call ${witnessConfig.displayName} (${witnessConfig.role}) to the stand. Announce their name and role formally and briefly.`,
         });
-        await context.pause(PAUSE_MS.witnessBetweenTurns);
+        await context.pause(displayPauseMs(bailiffTurn.dialogue));
 
         // 2. Direct examination
         for (let q = 0; q < script.directRounds; q++) {
-            await context.generateBudgetedTurn({
+            const prosecutorTurn = await context.generateBudgetedTurn({
                 store: context.store,
                 session: context.session,
                 speaker: prosecutor,
                 role: 'prosecutor',
                 userInstruction: `Ask ${witnessConfig.displayName} a focused question about the core accusation. Direct examination question ${q + 1} of ${script.directRounds}. If you have grounds to object to anything said previously, begin with "OBJECTION:" followed by the type.`,
             });
-            await context.pause(PAUSE_MS.witnessBetweenTurns);
+            await context.pause(displayPauseMs(prosecutorTurn.dialogue));
 
             const witnessTurn = await context.generateBudgetedTurn({
                 store: context.store,
@@ -370,12 +376,12 @@ export async function runWitnessExamPhase(
                 ),
                 capConfig: context.witnessCapConfig,
             });
-            await context.pause(PAUSE_MS.witnessBetweenTurns);
+            await context.pause(displayPauseMs(witnessTurn.dialogue));
 
             // Random event check
             const event = checkRandomEvent();
             if (event) {
-                await runRandomEvent(
+                const eventTurn = await runRandomEvent(
                     context,
                     event,
                     witness,
@@ -384,12 +390,12 @@ export async function runWitnessExamPhase(
                     defense,
                     true,
                 );
-                await context.pause(PAUSE_MS.witnessBetweenTurns);
+                await context.pause(displayPauseMs(eventTurn.dialogue));
             }
 
             // Judge interrupt or objection check — mutually exclusive
             if (shouldJudgeInterrupt()) {
-                await context.generateBudgetedTurn({
+                const judgeInterruptTurn = await context.generateBudgetedTurn({
                     store: context.store,
                     session: context.session,
                     speaker: judge,
@@ -397,7 +403,7 @@ export async function runWitnessExamPhase(
                     userInstruction:
                         'Briefly clarify a procedural point or give a short instruction to the jury. One or two sentences.',
                 });
-                await context.pause(PAUSE_MS.witnessBetweenTurns);
+                await context.pause(displayPauseMs(judgeInterruptTurn.dialogue));
             } else {
                 await handleObjectionRound({
                     dialogue: witnessTurn.dialogue,
@@ -414,14 +420,14 @@ export async function runWitnessExamPhase(
 
         // 3. Cross-examination
         for (let q = 0; q < script.crossRounds; q++) {
-            await context.generateBudgetedTurn({
+            const defenseTurn = await context.generateBudgetedTurn({
                 store: context.store,
                 session: context.session,
                 speaker: defense,
                 role: 'defense',
                 userInstruction: `Cross-examine ${witnessConfig.displayName} with one pointed challenge. Cross question ${q + 1} of ${script.crossRounds}. If you have grounds to object to anything said previously, begin with "OBJECTION:" followed by the type.`,
             });
-            await context.pause(PAUSE_MS.witnessBetweenTurns);
+            await context.pause(displayPauseMs(defenseTurn.dialogue));
 
             const witnessCrossTurn = await context.generateBudgetedTurn({
                 store: context.store,
@@ -437,12 +443,12 @@ export async function runWitnessExamPhase(
                 ),
                 capConfig: context.witnessCapConfig,
             });
-            await context.pause(PAUSE_MS.witnessBetweenTurns);
+            await context.pause(displayPauseMs(witnessCrossTurn.dialogue));
 
             // Random event check
             const crossEvent = checkRandomEvent();
             if (crossEvent) {
-                await runRandomEvent(
+                const crossEventTurn = await runRandomEvent(
                     context,
                     crossEvent,
                     witness,
@@ -451,12 +457,12 @@ export async function runWitnessExamPhase(
                     defense,
                     false,
                 );
-                await context.pause(PAUSE_MS.witnessBetweenTurns);
+                await context.pause(displayPauseMs(crossEventTurn.dialogue));
             }
 
             // Judge interrupt or objection check — mutually exclusive
             if (shouldJudgeInterrupt()) {
-                await context.generateBudgetedTurn({
+                const judgeInterruptTurn = await context.generateBudgetedTurn({
                     store: context.store,
                     session: context.session,
                     speaker: judge,
@@ -464,7 +470,7 @@ export async function runWitnessExamPhase(
                     userInstruction:
                         'Briefly clarify a procedural point or give a short instruction to the jury. One or two sentences.',
                 });
-                await context.pause(PAUSE_MS.witnessBetweenTurns);
+                await context.pause(displayPauseMs(judgeInterruptTurn.dialogue));
             } else {
                 await handleObjectionRound({
                     dialogue: witnessCrossTurn.dialogue,
@@ -527,7 +533,7 @@ export async function runClosingsPhase(
         }),
     );
 
-    await context.generateBudgetedTurn({
+    const prosecutorClosing = await context.generateBudgetedTurn({
         store: context.store,
         session: context.session,
         speaker: prosecutor,
@@ -535,7 +541,7 @@ export async function runClosingsPhase(
         userInstruction:
             'Deliver closing argument in 2-4 sentences with one memorable line.',
     });
-    await context.pause(PAUSE_MS.closingBetweenSides);
+    await context.pause(displayPauseMs(prosecutorClosing.dialogue));
 
     await context.generateBudgetedTurn({
         store: context.store,
