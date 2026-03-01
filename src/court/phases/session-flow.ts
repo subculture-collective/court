@@ -29,6 +29,7 @@ const PHASE_DURATION_MS = {
 const PAUSE_MS = {
     casePromptAfterCue: 2_000,
     witnessBetweenCycles: 3_000,
+    witnessBetweenTurns: 2_500,
     recapLeadIn: 1_500,
 } as const;
 
@@ -358,7 +359,7 @@ export async function runWitnessExamPhase(
                 session: context.session,
                 speaker: prosecutor,
                 role: 'prosecutor',
-                userInstruction: `Ask ${witnessConfig.displayName} a focused question about the core accusation. Direct examination question ${q + 1} of ${script.directRounds}. If you have grounds to object to anything said previously, begin with "OBJECTION:" followed by the type.`,
+                userInstruction: `Ask ${witnessConfig.displayName} a focused question about the core accusation. Direct examination question ${q + 1} of ${script.directRounds}.`,
             });
             await context.pause(displayPauseMs(prosecutorTurn.dialogue));
 
@@ -406,7 +407,7 @@ export async function runWitnessExamPhase(
                 await context.pause(displayPauseMs(judgeInterruptTurn.dialogue));
             } else {
                 await handleObjectionRound({
-                    dialogue: witnessTurn.dialogue,
+                    dialogue: prosecutorTurn.dialogue,
                     objectingAgentId: defense,
                     objectingRole: 'defense',
                     judgeAgentId: judge,
@@ -414,6 +415,7 @@ export async function runWitnessExamPhase(
                     store: context.store,
                     session: context.session,
                     pause: context.pause,
+                    pauseMs: PAUSE_MS.witnessBetweenTurns,
                 });
             }
         }
@@ -425,7 +427,7 @@ export async function runWitnessExamPhase(
                 session: context.session,
                 speaker: defense,
                 role: 'defense',
-                userInstruction: `Cross-examine ${witnessConfig.displayName} with one pointed challenge. Cross question ${q + 1} of ${script.crossRounds}. If you have grounds to object to anything said previously, begin with "OBJECTION:" followed by the type.`,
+                userInstruction: `Cross-examine ${witnessConfig.displayName} with one pointed challenge. Cross question ${q + 1} of ${script.crossRounds}.`,
             });
             await context.pause(displayPauseMs(defenseTurn.dialogue));
 
@@ -473,7 +475,7 @@ export async function runWitnessExamPhase(
                 await context.pause(displayPauseMs(judgeInterruptTurn.dialogue));
             } else {
                 await handleObjectionRound({
-                    dialogue: witnessCrossTurn.dialogue,
+                    dialogue: defenseTurn.dialogue,
                     objectingAgentId: prosecutor,
                     objectingRole: 'prosecutor',
                     judgeAgentId: judge,
@@ -481,6 +483,7 @@ export async function runWitnessExamPhase(
                     store: context.store,
                     session: context.session,
                     pause: context.pause,
+                    pauseMs: PAUSE_MS.witnessBetweenTurns,
                 });
             }
         }
