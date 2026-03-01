@@ -1023,7 +1023,9 @@ export async function createServerApp(
     });
 
     twitchBot.start().catch(err => {
-        console.warn('[Twitch Bot] Failed to start:', err);
+        logger.warn(
+            `[Twitch Bot] Failed to start: ${err instanceof Error ? err.message : String(err)}`,
+        );
     });
 
     registerStaticAndSpaRoutes(app, {
