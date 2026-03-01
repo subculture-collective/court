@@ -101,7 +101,7 @@ test('replay mode re-emits NDJSON events on SSE with session rewriting', async (
                     id: 'turn-1',
                     sessionId: 'recorded-session',
                     turnNumber: 0,
-                    speaker: 'primus',
+                    speaker: 'godot',
                     role: 'judge',
                     phase: 'case_prompt',
                     dialogue: 'Court is now in session.',

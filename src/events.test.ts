@@ -57,7 +57,7 @@ test('assertEventPayload: turn valid', () => {
                     id: 't1',
                     sessionId: 'sess-1',
                     turnNumber: 0,
-                    speaker: 'chora',
+                    speaker: 'phoenix',
                     role: 'judge',
                     phase: 'openings',
                     dialogue: 'All rise.',
@@ -99,7 +99,7 @@ test('assertEventPayload: witness_response_capped valid', () => {
         assertEventPayload(
             makeEvent('witness_response_capped', {
                 turnId: 'turn-1',
-                speaker: 'chora',
+                speaker: 'phoenix',
                 phase: 'witness_exam',
                 originalLength: 180,
                 truncatedLength: 120,
@@ -126,7 +126,7 @@ test('assertEventPayload: token_budget_applied valid', () => {
         assertEventPayload(
             makeEvent('token_budget_applied', {
                 turnId: 'turn-3',
-                speaker: 'chora',
+                speaker: 'phoenix',
                 role: 'judge',
                 phase: 'openings',
                 requestedMaxTokens: 260,
@@ -196,7 +196,7 @@ test('assertEventPayload: moderation_action valid', () => {
         assertEventPayload(
             makeEvent('moderation_action', {
                 turnId: 't1',
-                speaker: 'mux',
+                speaker: 'gumshoe',
                 reasons: ['hate_speech'],
                 phase: 'openings',
             }),
@@ -318,7 +318,7 @@ test('assertEventPayload: witness_response_capped missing turnId', () => {
         () =>
             assertEventPayload(
                 makeEvent('witness_response_capped', {
-                    speaker: 'chora',
+                    speaker: 'phoenix',
                     phase: 'witness_exam',
                     originalLength: 180,
                     truncatedLength: 120,
@@ -348,7 +348,7 @@ test('assertEventPayload: token_budget_applied missing roleMaxTokens', () => {
             assertEventPayload(
                 makeEvent('token_budget_applied', {
                     turnId: 'turn-3',
-                    speaker: 'chora',
+                    speaker: 'phoenix',
                     role: 'judge',
                     phase: 'openings',
                     requestedMaxTokens: 260,
@@ -394,7 +394,7 @@ test('assertEventPayload: moderation_action missing reasons array', () => {
             assertEventPayload(
                 makeEvent('moderation_action', {
                     turnId: 't1',
-                    speaker: 'mux',
+                    speaker: 'gumshoe',
                     phase: 'openings',
                 }),
             ),
@@ -474,7 +474,7 @@ test('assertEventPayload: witness_statement valid', () => {
             makeEvent('witness_statement', {
                 statement: {
                     witnessRole: 'witness_1',
-                    agentId: 'chora',
+                    agentId: 'phoenix',
                     statementText: 'I saw it happen.',
                     issuedAt: new Date().toISOString(),
                 },

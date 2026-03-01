@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CourtPhase, CourtEvent } from '../types.js';
-import { AGENT_IDS, AGENTS } from '../agents.js';
+import { AGENTS } from '../agents.js';
 import { runCourtSession } from './orchestrator.js';
-import { assignCourtRoles } from './roles.js';
+import { assignCourtRoles, participantsFromRoleAssignments } from './roles.js';
 import { createCourtSessionStore } from '../store/session-store.js';
 import { MockTTSAdapter } from '../tts/adapter.js';
 
@@ -62,6 +62,8 @@ describe('Court State Machine - Phase Transitions', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -111,6 +113,8 @@ describe('Court State Machine - Phase Transitions', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -148,6 +152,8 @@ describe('Court State Machine - Phase Transitions', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -196,6 +202,8 @@ describe('Court State Machine - Phase Transitions', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -230,6 +238,8 @@ describe('Court State Machine - Phase Transitions', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -325,6 +335,8 @@ describe('Court State Machine - Phase Transitions', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -374,6 +386,8 @@ describe('Court State Machine - Phase Transitions', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -404,7 +418,8 @@ describe('Court State Machine - Phase Transitions', () => {
 describe('Court Orchestrator - TTS integration', () => {
     it('routes cues through adapter methods at phase milestones', async () => {
         const store = await createTestStore();
-        const participants = AGENT_IDS;
+        const roleAssignments = assignCourtRoles();
+        const participants = participantsFromRoleAssignments(roleAssignments);
 
         const session = await store.createSession({
             topic: 'Did the defendant replace office coffee with soup?',
@@ -414,12 +429,14 @@ describe('Court Orchestrator - TTS integration', () => {
                 casePrompt:
                     'Did the defendant replace office coffee with soup?',
                 caseType: 'criminal',
-                roleAssignments: assignCourtRoles(participants),
+                roleAssignments,
                 sentenceOptions: ['fine', 'probation'],
                 verdictVoteWindowMs: 1,
                 sentenceVoteWindowMs: 1,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -441,7 +458,8 @@ describe('Court Orchestrator - TTS integration', () => {
 
     it('does not fail session progression when TTS provider throws', async () => {
         const store = await createTestStore();
-        const participants = AGENT_IDS;
+        const roleAssignments = assignCourtRoles();
+        const participants = participantsFromRoleAssignments(roleAssignments);
 
         const session = await store.createSession({
             topic: 'Did the defendant install a trampoline in the jury box?',
@@ -451,12 +469,14 @@ describe('Court Orchestrator - TTS integration', () => {
                 casePrompt:
                     'Did the defendant install a trampoline in the jury box?',
                 caseType: 'criminal',
-                roleAssignments: assignCourtRoles(participants),
+                roleAssignments,
                 sentenceOptions: ['fine', 'probation'],
                 verdictVoteWindowMs: 1,
                 sentenceVoteWindowMs: 1,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 

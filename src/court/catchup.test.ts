@@ -12,7 +12,7 @@ function makeTurn(input: Partial<CourtTurn> & { id: string; dialogue: string }):
         id: input.id,
         sessionId: input.sessionId ?? 'sess-1',
         turnNumber: input.turnNumber ?? 0,
-        speaker: input.speaker ?? 'chora',
+        speaker: input.speaker ?? 'phoenix',
         role: input.role ?? 'judge',
         phase: input.phase ?? 'openings',
         dialogue: input.dialogue,
@@ -33,15 +33,15 @@ test('buildCaseSoFarSummary prefers latest recap turn', () => {
 
 test('buildCaseSoFarSummary falls back to recent stitched turns', () => {
     const turns = [
-        makeTurn({ id: 't1', speaker: 'chora', dialogue: 'Opening one.' }),
-        makeTurn({ id: 't2', speaker: 'subrosa', dialogue: 'Counterpoint two.' }),
-        makeTurn({ id: 't3', speaker: 'thaum', dialogue: 'Witness detail three.' }),
+        makeTurn({ id: 't1', speaker: 'phoenix', dialogue: 'Opening one.' }),
+        makeTurn({ id: 't2', speaker: 'edgeworth', dialogue: 'Counterpoint two.' }),
+        makeTurn({ id: 't3', speaker: 'maya', dialogue: 'Witness detail three.' }),
     ];
 
     const summary = buildCaseSoFarSummary(turns, []);
-    assert.match(summary, /chora: Opening one\./);
-    assert.match(summary, /subrosa: Counterpoint two\./);
-    assert.match(summary, /thaum: Witness detail three\./);
+    assert.match(summary, /phoenix: Opening one\./);
+    assert.match(summary, /edgeworth: Counterpoint two\./);
+    assert.match(summary, /maya: Witness detail three\./);
 });
 
 test('buildCaseSoFarSummary truncates and appends ellipsis when dialogue exceeds maxChars', () => {
