@@ -38,18 +38,23 @@ export function initAudio() {
         const promises = Object.entries(config).map(
             ([name, path]) =>
                 new Promise(resolve => {
-                    const sound = new Howl({
-                        src: [path],
-                        preload: true,
-                        onload: resolve,
-                        onloaderror: () => {
-                            console.warn(
-                                `[Audio] Failed to load "${name}" (${path}) — continuing without it`,
-                            );
-                            resolve();
-                        },
-                    });
-                    sounds.set(name, sound);
+                    try {
+                        const sound = new Howl({
+                            src: [path],
+                            preload: true,
+                            onload: resolve,
+                            onloaderror: () => {
+                                console.warn(
+                                    `[Audio] Failed to load "${name}" (${path}) — continuing without it`,
+                                );
+                                resolve();
+                            },
+                        });
+                        sounds.set(name, sound);
+                    } catch (err) {
+                        console.warn(`[Audio] Error creating Howl for "${name}":`, err);
+                        resolve();
+                    }
                 }),
         );
 
