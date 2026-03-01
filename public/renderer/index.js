@@ -22,6 +22,7 @@ import { initEffects } from './layers/effects.js';
 import { initEvidence } from './layers/evidence.js';
 import { initCamera } from './camera.js';
 import { createDialogueStateMachine } from './dialogue.js';
+import { initAudio, DEFAULT_SFX_CONFIG } from './audio.js';
 
 /**
  * @typedef {Object} RendererState
@@ -66,7 +67,13 @@ export async function createCourtRenderer(host) {
     const background = initBackground(stage);
     const characters = initCharacters(stage);
     const ui = initUI(stage);
-    const effects = initEffects(stage);
+    const audio = initAudio();
+    // Load SFX non-blocking — effects work even if files are absent
+    audio.loadSFX(DEFAULT_SFX_CONFIG).catch(err =>
+        console.warn('[Audio] SFX load error:', err),
+    );
+
+    const effects = initEffects(stage, audio);
     const evidence = initEvidence(stage);
     const camera = initCamera(stage);
 
@@ -164,5 +171,6 @@ export async function createCourtRenderer(host) {
         evidence,
         camera,
         dialogue: dialogueSM,
+        audio,
     };
 }
