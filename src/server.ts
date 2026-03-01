@@ -1015,11 +1015,19 @@ export async function createServerApp(
         clientId: process.env.TWITCH_CLIENT_ID ?? '',
         clientSecret: process.env.TWITCH_CLIENT_SECRET ?? '',
         apiBaseUrl: `http://localhost:${process.env.PORT ?? 3000}`,
-        getActiveSessionId: async () => {
-            const sessions = await store.listSessions();
-            const running = sessions.find(s => s.status === 'running');
-            return running?.id ?? null;
-        },
+        getActiveSessionId: (() => {
+            let cachedId: string | null = null;
+            let cacheExpiresAt = 0;
+            return async () => {
+                const now = Date.now();
+                if (now < cacheExpiresAt) return cachedId;
+                const sessions = await store.listSessions();
+                const running = sessions.find(s => s.status === 'running');
+                cachedId = running?.id ?? null;
+                cacheExpiresAt = now + 5_000; // cache for 5 sec; commands to a just-ended session fail gracefully
+                return cachedId;
+            };
+        })(),
     });
 
     twitchBot.start().catch(err => {

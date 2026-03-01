@@ -15,6 +15,8 @@ import { parseCommand as parseChatCommand } from './commands.js';
 
 export interface BotConfig {
     channel: string;
+    /** Bot account username; defaults to channel name when omitted. */
+    botUsername?: string;
     botToken: string;
     clientId: string;
     clientSecret: string;
@@ -80,7 +82,7 @@ export class TwitchBot {
      * Initialize bot: connect to IRC and register EventSub
      */
     public async start(): Promise<void> {
-        if (!this.config || !this.isActive) {
+        if (!this.config || this.isActive) {
             return;
         }
 
@@ -107,9 +109,11 @@ export class TwitchBot {
     private async connectIRC(): Promise<void> {
         if (!this.config) return;
 
+        const identityUsername = this.config.botUsername ?? this.config.channel;
+
         this.tmiClient = new TmiClient({
             identity: {
-                username: this.config.channel,
+                username: identityUsername,
                 password: this.config.botToken,
             },
             channels: [this.config.channel],
@@ -117,15 +121,31 @@ export class TwitchBot {
 
         this.tmiClient.on(
             'message',
-            async (_channel: string, tags: ChatUserstate, message: string) => {
-                const username = tags.username ?? tags['display-name'] ?? 'unknown';
-                const command = this.parseCommand(message, username);
-                if (!command || !this.config) return;
+            async (
+                _channel: string,
+                tags: ChatUserstate,
+                message: string,
+                self: boolean,
+            ) => {
+                try {
+                    // Ignore messages sent by the bot itself to avoid feedback loops
+                    if (self) return;
 
-                const sessionId = await this.config.getActiveSessionId();
-                if (!sessionId) return;
+                    const username =
+                        tags.username ?? tags['display-name'] ?? 'unknown';
+                    const command = this.parseCommand(message, username);
+                    if (!command || !this.config) return;
 
-                await this.forwardCommand(command, sessionId);
+                    const sessionId = await this.config.getActiveSessionId();
+                    if (!sessionId) return;
+
+                    await this.forwardCommand(command, sessionId);
+                } catch (error) {
+                    console.error(
+                        '[Twitch Bot] Error handling IRC message:',
+                        error,
+                    );
+                }
             },
         );
 
