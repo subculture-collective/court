@@ -13,6 +13,10 @@ import type {
 import type { CourtSessionStore } from '../../store/session-store.js';
 import { estimateCostUsd, type RoleTokenBudgetConfig } from '../token-budget.js';
 import { effectiveTokenLimit, type WitnessCapConfig } from '../witness-caps.js';
+import { buildWitnessScripts } from './witness-script.js';
+import { checkRandomEvent, type RandomEvent, type EventSpeaker } from './random-events.js';
+import { handleObjectionRound } from './objections.js';
+import { AGENTS } from '../../agents.js';
 
 const PHASE_DURATION_MS = {
     casePrompt: 8_000,
@@ -23,13 +27,21 @@ const PHASE_DURATION_MS = {
 } as const;
 
 const PAUSE_MS = {
-    casePromptAfterCue: 1_200,
-    openingBetweenSides: 900,
-    witnessBetweenTurns: 600,
-    witnessBetweenCycles: 800,
-    recapLeadIn: 600,
-    closingBetweenSides: 800,
+    casePromptAfterCue: 2_000,
+    witnessBetweenCycles: 3_000,
+    witnessBetweenTurns: 2_500,
+    recapLeadIn: 1_500,
 } as const;
+
+const DISPLAY_CPM = 200;
+const PREFETCH_RATIO = 0.8;
+
+/** Returns how long to pause before starting the next LLM call, based on how long
+ * the client will spend displaying the given dialogue at DISPLAY_CPM characters/min.
+ * Fires at PREFETCH_RATIO of display time so the response arrives just as the display ends. */
+function displayPauseMs(dialogue: string): number {
+    return (dialogue.length / DISPLAY_CPM) * 60_000 * PREFETCH_RATIO;
+}
 
 const MAX_WITNESS_TURN_TOKENS = 260;
 const MAX_WITNESS_ROLE_INDEX = 3;
@@ -240,7 +252,7 @@ export async function runOpeningsPhase(
         }),
     );
 
-    await context.generateBudgetedTurn({
+    const prosecutorOpening = await context.generateBudgetedTurn({
         store: context.store,
         session: context.session,
         speaker: prosecutor,
@@ -248,7 +260,7 @@ export async function runOpeningsPhase(
         userInstruction:
             'Deliver your opening statement and explain why the court should lean toward conviction/liability.',
     });
-    await context.pause(PAUSE_MS.openingBetweenSides);
+    await context.pause(displayPauseMs(prosecutorOpening.dialogue));
 
     await context.generateBudgetedTurn({
         store: context.store,
@@ -260,10 +272,51 @@ export async function runOpeningsPhase(
     });
 }
 
+function shouldJudgeInterrupt(rng: () => number = Math.random, probability = 0.12): boolean {
+    return rng() < probability;
+}
+
+async function runRandomEvent(
+    context: SessionRuntimeContext,
+    event: RandomEvent,
+    witnessId: AgentId,
+    witnessRole: CourtRole,
+    prosecutorId: AgentId,
+    defenseId: AgentId,
+    isDirectExam: boolean,
+): Promise<CourtTurn> {
+    const speaker: EventSpeaker = event.speaker;
+    let agentId: AgentId;
+    let role: CourtRole;
+
+    if (speaker === 'witness') {
+        agentId = witnessId;
+        role = witnessRole;
+    } else if (speaker === 'bailiff') {
+        agentId = context.session.metadata.roleAssignments.bailiff;
+        role = 'bailiff';
+    } else if (speaker === 'judge') {
+        agentId = context.session.metadata.roleAssignments.judge;
+        role = 'judge';
+    } else {
+        // opposing_counsel: during direct, the defense opposes; during cross, the prosecution opposes
+        agentId = isDirectExam ? defenseId : prosecutorId;
+        role = isDirectExam ? 'defense' : 'prosecutor';
+    }
+
+    return context.generateBudgetedTurn({
+        store: context.store,
+        session: context.session,
+        speaker: agentId,
+        role,
+        userInstruction: event.userInstruction,
+    });
+}
+
 export async function runWitnessExamPhase(
     context: SessionRuntimeContext,
 ): Promise<void> {
-    const { judge, prosecutor, defense, witnesses } =
+    const { judge, prosecutor, defense, witnesses, bailiff } =
         context.session.metadata.roleAssignments;
 
     await beginPhase(context, 'witness_exam', PHASE_DURATION_MS.witnessExam);
@@ -274,58 +327,170 @@ export async function runWitnessExamPhase(
             text: 'Witness examination begins. The court will hear testimony.',
         }),
     );
-    await context.pause(PAUSE_MS.witnessBetweenTurns);
 
-    const activeWitnesses = witnesses.slice(0, Math.max(1, witnesses.length));
-    let exchangeCount = 0;
+    const scripts = buildWitnessScripts(witnesses.length);
+    // eslint-disable-next-line no-console
+    console.info(
+        `[witness-exam] session=${context.session.id} scripts=${JSON.stringify(scripts)}`,
+    );
 
-    for (const [index, witness] of activeWitnesses.entries()) {
-        await context.generateBudgetedTurn({
+    let witnessIndex = 0;
+
+    for (const witness of witnesses) {
+        const script = scripts[witnessIndex]!;
+        const witnessRole =
+            `witness_${Math.min(witnessIndex + 1, MAX_WITNESS_ROLE_INDEX)}` as CourtRole;
+        const witnessConfig = AGENTS[witness];
+
+        // 1. Bailiff introduces witness
+        const bailiffTurn = await context.generateBudgetedTurn({
             store: context.store,
             session: context.session,
-            speaker: judge,
-            role: 'judge',
-            userInstruction: `Ask witness ${index + 1} a focused question about the core accusation.`,
+            speaker: bailiff,
+            role: 'bailiff',
+            userInstruction: `Call ${witnessConfig.displayName} (${witnessConfig.role}) to the stand. Announce their name and role formally and briefly.`,
         });
-        await context.pause(PAUSE_MS.witnessBetweenTurns);
+        await context.pause(displayPauseMs(bailiffTurn.dialogue));
 
-        await context.generateBudgetedTurn({
-            store: context.store,
-            session: context.session,
-            speaker: witness,
-            role: `witness_${Math.min(index + 1, MAX_WITNESS_ROLE_INDEX)}` as CourtRole,
-            userInstruction:
-                'Provide testimony in 1-3 sentences with one concrete detail and one comedic detail.',
-            maxTokens: Math.min(
-                MAX_WITNESS_TURN_TOKENS,
-                effectiveTokenLimit(context.witnessCapConfig).limit ??
+        // 2. Direct examination
+        for (let q = 0; q < script.directRounds; q++) {
+            const prosecutorTurn = await context.generateBudgetedTurn({
+                store: context.store,
+                session: context.session,
+                speaker: prosecutor,
+                role: 'prosecutor',
+                userInstruction: `Ask ${witnessConfig.displayName} a focused question about the core accusation. Direct examination question ${q + 1} of ${script.directRounds}.`,
+            });
+            await context.pause(displayPauseMs(prosecutorTurn.dialogue));
+
+            const witnessTurn = await context.generateBudgetedTurn({
+                store: context.store,
+                session: context.session,
+                speaker: witness,
+                role: witnessRole,
+                userInstruction:
+                    'Answer the question in 1–3 sentences with one concrete detail. Be truthful — or convincingly not.',
+                maxTokens: Math.min(
                     MAX_WITNESS_TURN_TOKENS,
-            ),
-            capConfig: context.witnessCapConfig,
-        });
-        await context.pause(PAUSE_MS.witnessBetweenTurns);
+                    effectiveTokenLimit(context.witnessCapConfig).limit ??
+                        MAX_WITNESS_TURN_TOKENS,
+                ),
+                capConfig: context.witnessCapConfig,
+            });
+            await context.pause(displayPauseMs(witnessTurn.dialogue));
 
-        await context.generateBudgetedTurn({
-            store: context.store,
-            session: context.session,
-            speaker: prosecutor,
-            role: 'prosecutor',
-            userInstruction:
-                'Cross-examine this witness with one pointed challenge.',
-        });
-        await context.pause(PAUSE_MS.witnessBetweenTurns);
+            // Random event check
+            const event = checkRandomEvent();
+            if (event) {
+                const eventTurn = await runRandomEvent(
+                    context,
+                    event,
+                    witness,
+                    witnessRole,
+                    prosecutor,
+                    defense,
+                    true,
+                );
+                await context.pause(displayPauseMs(eventTurn.dialogue));
+            }
 
-        await context.generateBudgetedTurn({
-            store: context.store,
-            session: context.session,
-            speaker: defense,
-            role: 'defense',
-            userInstruction:
-                'Respond to the cross-exam and protect witness credibility in one short rebuttal.',
-        });
+            // Judge interrupt or objection check — mutually exclusive
+            if (shouldJudgeInterrupt()) {
+                const judgeInterruptTurn = await context.generateBudgetedTurn({
+                    store: context.store,
+                    session: context.session,
+                    speaker: judge,
+                    role: 'judge',
+                    userInstruction:
+                        'Briefly clarify a procedural point or give a short instruction to the jury. One or two sentences.',
+                });
+                await context.pause(displayPauseMs(judgeInterruptTurn.dialogue));
+            } else {
+                await handleObjectionRound({
+                    dialogue: prosecutorTurn.dialogue,
+                    objectingAgentId: defense,
+                    objectingRole: 'defense',
+                    judgeAgentId: judge,
+                    generateBudgetedTurn: context.generateBudgetedTurn,
+                    store: context.store,
+                    session: context.session,
+                    pause: context.pause,
+                    pauseMs: PAUSE_MS.witnessBetweenTurns,
+                });
+            }
+        }
 
-        exchangeCount += 1;
-        if (exchangeCount % context.recapCadence === 0) {
+        // 3. Cross-examination
+        for (let q = 0; q < script.crossRounds; q++) {
+            const defenseTurn = await context.generateBudgetedTurn({
+                store: context.store,
+                session: context.session,
+                speaker: defense,
+                role: 'defense',
+                userInstruction: `Cross-examine ${witnessConfig.displayName} with one pointed challenge. Cross question ${q + 1} of ${script.crossRounds}.`,
+            });
+            await context.pause(displayPauseMs(defenseTurn.dialogue));
+
+            const witnessCrossTurn = await context.generateBudgetedTurn({
+                store: context.store,
+                session: context.session,
+                speaker: witness,
+                role: witnessRole,
+                userInstruction:
+                    'Respond to the cross-examination in 1–3 sentences. You may be evasive, emotional, or suspiciously specific.',
+                maxTokens: Math.min(
+                    MAX_WITNESS_TURN_TOKENS,
+                    effectiveTokenLimit(context.witnessCapConfig).limit ??
+                        MAX_WITNESS_TURN_TOKENS,
+                ),
+                capConfig: context.witnessCapConfig,
+            });
+            await context.pause(displayPauseMs(witnessCrossTurn.dialogue));
+
+            // Random event check
+            const crossEvent = checkRandomEvent();
+            if (crossEvent) {
+                const crossEventTurn = await runRandomEvent(
+                    context,
+                    crossEvent,
+                    witness,
+                    witnessRole,
+                    prosecutor,
+                    defense,
+                    false,
+                );
+                await context.pause(displayPauseMs(crossEventTurn.dialogue));
+            }
+
+            // Judge interrupt or objection check — mutually exclusive
+            if (shouldJudgeInterrupt()) {
+                const judgeInterruptTurn = await context.generateBudgetedTurn({
+                    store: context.store,
+                    session: context.session,
+                    speaker: judge,
+                    role: 'judge',
+                    userInstruction:
+                        'Briefly clarify a procedural point or give a short instruction to the jury. One or two sentences.',
+                });
+                await context.pause(displayPauseMs(judgeInterruptTurn.dialogue));
+            } else {
+                await handleObjectionRound({
+                    dialogue: defenseTurn.dialogue,
+                    objectingAgentId: prosecutor,
+                    objectingRole: 'prosecutor',
+                    judgeAgentId: judge,
+                    generateBudgetedTurn: context.generateBudgetedTurn,
+                    store: context.store,
+                    session: context.session,
+                    pause: context.pause,
+                    pauseMs: PAUSE_MS.witnessBetweenTurns,
+                });
+            }
+        }
+
+        // Judge recap at configured cadence
+        witnessIndex += 1;
+        if (witnessIndex % context.recapCadence === 0) {
             await context.pause(PAUSE_MS.recapLeadIn);
             const recapTurn = await context.generateBudgetedTurn({
                 store: context.store,
@@ -341,7 +506,7 @@ export async function runWitnessExamPhase(
                 sessionId: context.session.id,
                 turnId: recapTurn.id,
                 phase: context.session.phase,
-                cycleNumber: exchangeCount,
+                cycleNumber: witnessIndex,
             });
 
             await context.safelySpeak('speakRecap', () =>
@@ -371,7 +536,7 @@ export async function runClosingsPhase(
         }),
     );
 
-    await context.generateBudgetedTurn({
+    const prosecutorClosing = await context.generateBudgetedTurn({
         store: context.store,
         session: context.session,
         speaker: prosecutor,
@@ -379,7 +544,7 @@ export async function runClosingsPhase(
         userInstruction:
             'Deliver closing argument in 2-4 sentences with one memorable line.',
     });
-    await context.pause(PAUSE_MS.closingBetweenSides);
+    await context.pause(displayPauseMs(prosecutorClosing.dialogue));
 
     await context.generateBudgetedTurn({
         store: context.store,

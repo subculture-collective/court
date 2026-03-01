@@ -51,20 +51,73 @@ export function sanitizeDialogue(text: string): string {
         .trim();
 }
 
+const MOCK_LINES: Array<{ pattern: RegExp; lines: string[] }> = [
+    {
+        pattern: /opening|statement/i,
+        lines: [
+            'The facts in this case are stranger than fiction, and the fiction is not great either. We intend to prove every last strange bit of it.',
+            'The evidence will speak for itself — loudly, incoherently, and with unusual conviction.',
+            'What you are about to hear is either a crime or a misunderstanding of historic proportions. Possibly both.',
+            'The prosecution will demonstrate, beyond reasonable doubt, that something happened. The exact nature of that something will become abundantly clear.',
+            'We ask only that you keep an open mind — and perhaps a strong stomach.',
+            'The defense maintains our client is innocent, and also maintains several other positions that will be revealed at the worst possible moment.',
+        ],
+    },
+    {
+        pattern: /witness|testimony|cross/i,
+        lines: [
+            'I can state with certainty that I observed something. The details are fuzzy, but the certainty is very high.',
+            'At the time I thought nothing of it. In retrospect I should have thought quite a lot of it.',
+            'I was present. I was observing. What I observed is what you might call difficult to categorize.',
+            'Everything I am about to say is accurate to the best of my recollection, which is doing its best.',
+            'There was an incident. I was adjacent to it. My proximity was noted by several parties, including myself.',
+            'I remember it clearly: there was a moment, and I was in it. The moment was notable. That is my testimony.',
+        ],
+    },
+    {
+        pattern: /closing/i,
+        lines: [
+            'The evidence has spoken. It has spoken at length, somewhat repetitively, and with great emotional commitment.',
+            'We ask you to weigh the facts — not the feelings, not the drama, not the seventeen things that went unexpectedly sideways.',
+            'One truth remains: something happened, someone did it, and this court must decide what happens next.',
+            'The defense rests — on the bedrock of reasonable doubt and a sincere belief that this has all gone far enough.',
+            'Justice demands a verdict. Logic demands clarity. The circumstances demand a stiff drink and a long lie-down.',
+            'I leave you with this: whatever you decide, decide it with the full weight of your conscience and at least two of your five senses.',
+        ],
+    },
+    {
+        pattern: /ruling|verdict/i,
+        lines: [
+            'On the matter before this court, I have considered the evidence, the arguments, and my own rising blood pressure. The verdict stands.',
+            'This court finds the evidence compelling in ways that are difficult to articulate but impossible to ignore.',
+            'I have heard enough. The court has heard enough. The court reporter has definitely heard enough.',
+            'The ruling of this court is final. The chaos leading to it was anything but. Proceedings are concluded.',
+            'After careful deliberation — I wrote things down — this court delivers its judgment.',
+            'This court has seen many things. Most of them were other cases. Nevertheless, a verdict is reached.',
+        ],
+    },
+];
+
+const MOCK_LINES_DEFAULT = [
+    'Noted. The court acknowledges the point and invites us all to move forward with cautious optimism.',
+    'Order. We proceed. Whatever just happened, we proceed from it.',
+    'The record reflects the current state of affairs. The current state of affairs is noted.',
+    'This court will take that under advisement. We advise ourselves to continue.',
+    'The relevant determination having been made, proceedings continue.',
+    'So noted. The court is, as always, moving forward.',
+];
+
+function pickRandom<T>(arr: [T, ...T[]]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
 function mockReply(prompt: string): string {
-    if (/opening|statement/i.test(prompt)) {
-        return 'Ladies and gentlemen of the jury, the facts are weird, the timeline is worse, and someone absolutely touched the thermostat without consent.';
+    for (const { pattern, lines } of MOCK_LINES) {
+        if (pattern.test(prompt)) {
+            return pickRandom(lines as [string, ...string[]]);
+        }
     }
-    if (/witness|testimony|cross/i.test(prompt)) {
-        return 'I saw the defendant near the snack cabinet at 2:03 AM, holding a spoon and what looked like emotional intent.';
-    }
-    if (/closing/i.test(prompt)) {
-        return 'At the end of the day, this is either a crime or a spectacular misunderstanding involving glitter and plausible deniability.';
-    }
-    if (/ruling|verdict/i.test(prompt)) {
-        return 'On the charge of chaos in the first degree, this court finds the defendant dramatically guilty—with style points.';
-    }
-    return 'Order in the court. I acknowledge the point and move us to the next absurdly important matter.';
+    return pickRandom(MOCK_LINES_DEFAULT as [string, ...string[]]);
 }
 
 async function tryModelGenerate(

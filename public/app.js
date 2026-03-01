@@ -76,7 +76,7 @@ const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 10_000;
 const CATCHUP_MAX_CHARS = 220;
 const TIMER_TICK_MS = 250;
-const TYPEWRITER_CHARS_PER_SECOND = 48;
+const TYPEWRITER_CHARS_PER_SECOND = 200 / 60; // 200 CPM — matches server-side display pacing
 
 const fixtureReplayState = {
     active: false,
