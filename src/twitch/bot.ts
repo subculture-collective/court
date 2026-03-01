@@ -6,24 +6,30 @@
  */
 
 import type { EventEmitter } from 'events';
+import { Client as TmiClient, type ChatUserstate } from 'tmi.js';
 import {
     CommandRateLimiter,
     DEFAULT_COMMAND_RATE_LIMIT,
 } from './command-rate-limit.js';
+import { parseCommand as parseChatCommand } from './commands.js';
 
 export interface BotConfig {
     channel: string;
+    /** Bot account username; defaults to channel name when omitted. */
+    botUsername?: string;
     botToken: string;
     clientId: string;
     clientSecret: string;
     apiBaseUrl: string;
+    /** Returns the current active session ID, or null if no session is running. */
+    getActiveSessionId: () => Promise<string | null>;
 }
 
 export interface ParsedCommand {
     action: 'press' | 'present' | 'vote' | 'sentence';
     username: string;
     timestamp: number;
-    params?: Record<string, any>;
+    params: Record<string, any>;
 }
 
 export interface RedemptionEvent {
@@ -42,6 +48,7 @@ export class TwitchBot {
     private isActive: boolean = false;
     private eventEmitter: EventEmitter | null = null;
     private commandRateLimiter: CommandRateLimiter;
+    private tmiClient: TmiClient | null = null;
 
     constructor(config?: BotConfig) {
         // Initialize rate limiter regardless of config
@@ -75,7 +82,7 @@ export class TwitchBot {
      * Initialize bot: connect to IRC and register EventSub
      */
     public async start(): Promise<void> {
-        if (!this.config || !this.isActive) {
+        if (!this.config || this.isActive) {
             return;
         }
 
@@ -100,9 +107,50 @@ export class TwitchBot {
      * Stub implementation — will use tmi.js
      */
     private async connectIRC(): Promise<void> {
-        // Will be implemented with tmi.js
-        // For now, stub
-        console.log('[Twitch Bot] IRC connection stub');
+        if (!this.config) return;
+
+        const identityUsername = this.config.botUsername ?? this.config.channel;
+
+        this.tmiClient = new TmiClient({
+            identity: {
+                username: identityUsername,
+                password: this.config.botToken,
+            },
+            channels: [this.config.channel],
+        });
+
+        this.tmiClient.on(
+            'message',
+            async (
+                _channel: string,
+                tags: ChatUserstate,
+                message: string,
+                self: boolean,
+            ) => {
+                try {
+                    // Ignore messages sent by the bot itself to avoid feedback loops
+                    if (self) return;
+
+                    const username =
+                        tags.username ?? tags['display-name'] ?? 'unknown';
+                    const command = this.parseCommand(message, username);
+                    if (!command || !this.config) return;
+
+                    const sessionId = await this.config.getActiveSessionId();
+                    if (!sessionId) return;
+
+                    await this.forwardCommand(command, sessionId);
+                } catch (error) {
+                    console.error(
+                        '[Twitch Bot] Error handling IRC message:',
+                        error,
+                    );
+                }
+            },
+        );
+
+        await this.tmiClient.connect();
+        console.log(`[Twitch Bot] IRC connected to #${this.config.channel}`);
     }
 
     /**
@@ -123,19 +171,16 @@ export class TwitchBot {
         message: string,
         username: string,
     ): ParsedCommand | null {
-        // Check rate limit first
         const rateLimitCheck = this.commandRateLimiter.check(username, message);
         if (!rateLimitCheck.allowed) {
             console.warn(
-                `[Twitch Bot] Command rate limited for ${username}: ${rateLimitCheck.reason}`,
+                `[Twitch Bot] Rate limited ${username}: ${rateLimitCheck.reason}`,
             );
             return null;
         }
 
-        // Will delegate to commands.ts parser
-        // For now, stub
-        console.log(`[Twitch Bot] Parsed command from ${username}: ${message}`);
-        return null;
+        const parsed = parseChatCommand(message, username);
+        return parsed as ParsedCommand | null;
     }
 
     /**
@@ -155,6 +200,59 @@ export class TwitchBot {
         );
     }
 
+    private async forwardCommand(
+        command: ParsedCommand,
+        sessionId: string,
+    ): Promise<void> {
+        if (!this.config) return;
+
+        let path: string;
+        let body: Record<string, unknown>;
+
+        if (command.action === 'press') {
+            path = `/api/court/sessions/${sessionId}/press`;
+            body = { statementNumber: command.params?.statementNumber };
+        } else if (command.action === 'present') {
+            path = `/api/court/sessions/${sessionId}/present`;
+            body = {
+                evidenceId: command.params?.evidenceId,
+                statementNumber: command.params?.statementNumber,
+            };
+        } else if (command.action === 'vote') {
+            path = `/api/court/sessions/${sessionId}/vote`;
+            body = {
+                voteType: 'verdict',
+                choice: command.params?.choice,
+                username: command.username,
+            };
+        } else if (command.action === 'sentence') {
+            path = `/api/court/sessions/${sessionId}/vote`;
+            body = {
+                voteType: 'sentence',
+                choice: command.params?.choice,
+                username: command.username,
+            };
+        } else {
+            return;
+        }
+
+        try {
+            const url = `${this.config.apiBaseUrl}${path}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                console.warn(
+                    `[Twitch Bot] API error ${res.status} for ${command.action} from ${command.username}`,
+                );
+            }
+        } catch (err) {
+            console.warn('[Twitch Bot] Failed to forward command:', err);
+        }
+    }
+
     /**
      * Stop bot and disconnect
      */
@@ -165,7 +263,12 @@ export class TwitchBot {
 
         console.log('[Twitch Bot] Stopping bot');
         this.isActive = false;
-        // Cleanup: disconnect IRC, unregister EventSub
+
+        if (this.tmiClient) {
+            this.tmiClient.removeAllListeners();
+            await this.tmiClient.disconnect().catch(() => {});
+            this.tmiClient = null;
+        }
     }
 
     public isRunning(): boolean {
@@ -193,6 +296,7 @@ export function initTwitchBot(config?: BotConfig): TwitchBot {
         clientId: process.env.TWITCH_CLIENT_ID || '',
         clientSecret: process.env.TWITCH_CLIENT_SECRET || '',
         apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000',
+        getActiveSessionId: async () => null,
     };
 
     globalBot = new TwitchBot(finalConfig);
