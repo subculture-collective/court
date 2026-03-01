@@ -245,6 +245,7 @@ export class TwitchBot {
         this.isActive = false;
 
         if (this.tmiClient) {
+            this.tmiClient.removeAllListeners();
             await this.tmiClient.disconnect().catch(() => {});
             this.tmiClient = null;
         }
