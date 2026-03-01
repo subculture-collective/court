@@ -9,7 +9,7 @@
         "lint": "tsc --noEmit",
         "build": "tsc -p tsconfig.json && vite build",
         "build:dashboard": "vite build",
-        "test": "node --import tsx --test src/*.test.ts src/**/*.test.ts",
+        "test": "node --import tsx --test 'src/**/*.test.ts'",
         "test:ops": "node --import tsx --test src/ops/ops-config.test.ts",
         "smoke:staging": "bash ./scripts/staging-smoke.sh",
         "start": "node dist/server.js",
