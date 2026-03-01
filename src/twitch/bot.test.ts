@@ -45,7 +45,18 @@ describe('TwitchBot.forwardCommand routing', () => {
     const requests: Array<{ url: string; body: unknown }> = [];
     const originalFetch = globalThis.fetch;
 
+    // Save original env var values so we can restore them (not just delete them)
+    let origChannel: string | undefined;
+    let origBotToken: string | undefined;
+    let origClientId: string | undefined;
+    let origClientSecret: string | undefined;
+
     before(() => {
+        origChannel = process.env.TWITCH_CHANNEL;
+        origBotToken = process.env.TWITCH_BOT_TOKEN;
+        origClientId = process.env.TWITCH_CLIENT_ID;
+        origClientSecret = process.env.TWITCH_CLIENT_SECRET;
+
         // Set env vars so credential check passes when constructing with config
         process.env.TWITCH_CHANNEL = 'test';
         process.env.TWITCH_BOT_TOKEN = 'oauth:test';
@@ -63,10 +74,19 @@ describe('TwitchBot.forwardCommand routing', () => {
     });
 
     after(() => {
-        delete process.env.TWITCH_CHANNEL;
-        delete process.env.TWITCH_BOT_TOKEN;
-        delete process.env.TWITCH_CLIENT_ID;
-        delete process.env.TWITCH_CLIENT_SECRET;
+        // Restore original env var values
+        if (origChannel === undefined) delete process.env.TWITCH_CHANNEL;
+        else process.env.TWITCH_CHANNEL = origChannel;
+
+        if (origBotToken === undefined) delete process.env.TWITCH_BOT_TOKEN;
+        else process.env.TWITCH_BOT_TOKEN = origBotToken;
+
+        if (origClientId === undefined) delete process.env.TWITCH_CLIENT_ID;
+        else process.env.TWITCH_CLIENT_ID = origClientId;
+
+        if (origClientSecret === undefined) delete process.env.TWITCH_CLIENT_SECRET;
+        else process.env.TWITCH_CLIENT_SECRET = origClientSecret;
+
         globalThis.fetch = originalFetch;
     });
 
