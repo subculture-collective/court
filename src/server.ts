@@ -3,8 +3,8 @@ import express, { type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AGENT_IDS, isValidAgent } from './agents.js';
-import { assignCourtRoles } from './court/roles.js';
+import { isValidAgent } from './agents.js';
+import { assignCourtRoles, participantsFromRoleAssignments } from './court/roles.js';
 import { runCourtSession } from './court/orchestrator.js';
 import {
     selectNextSafePrompt,
@@ -19,6 +19,13 @@ import {
     createCourtSessionStore,
 } from './store/session-store.js';
 import { VoteSpamGuard } from './moderation/vote-spam.js';
+import {
+    validateEventSubSignature,
+    parseEventSubWebhook,
+    mapRedemptionToAction,
+    RedemptionRateLimiter,
+    DEFAULT_REDEMPTION_RATE_LIMIT,
+} from './twitch/eventsub.js';
 import {
     elapsedSecondsSince,
     instrumentCourtSessionStore,
@@ -223,10 +230,9 @@ function createSessionHandler(deps: SessionRouteDeps) {
             try {
                 selectedPrompt = selectNextSafePrompt(genreHistory);
             } catch (error) {
-                logger.error(
-                    '[server] selectNextSafePrompt failed:',
-                    { error: error instanceof Error ? error.message : error },
-                );
+                logger.error('[server] selectNextSafePrompt failed:', {
+                    error: error instanceof Error ? error.message : error,
+                });
                 return sendError(
                     res,
                     503,
@@ -269,23 +275,13 @@ function createSessionHandler(deps: SessionRouteDeps) {
                 : req.body?.caseType === 'criminal' ? 'criminal'
                 : selectedPrompt.caseType; // Use selected prompt's case type if not specified
 
-            const participantsInput =
+            const overrideParticipants =
                 Array.isArray(req.body?.participants) ?
-                    req.body.participants
-                :   AGENT_IDS;
+                    (req.body.participants as string[]).filter((id): id is AgentId => isValidAgent(id))
+                :   undefined;
 
-            const participants = participantsInput.filter(
-                (id: string): id is AgentId => isValidAgent(id),
-            );
-
-            if (participants.length < 4) {
-                return sendError(
-                    res,
-                    400,
-                    'INVALID_PARTICIPANTS',
-                    'participants must include at least 4 valid agent IDs',
-                );
-            }
+            const roleAssignments = assignCourtRoles(overrideParticipants);
+            const participants = participantsFromRoleAssignments(roleAssignments);
 
             const sentenceOptions =
                 (
@@ -302,8 +298,6 @@ function createSessionHandler(deps: SessionRouteDeps) {
                         'Ethics training hosted by a raccoon',
                         'Ukulele ankle-monitor probation',
                     ];
-
-            const roleAssignments = assignCourtRoles(participants);
 
             // Phase 3: Update genre history
             const updatedGenreHistory = [
@@ -323,6 +317,8 @@ function createSessionHandler(deps: SessionRouteDeps) {
                     sentenceVoteWindowMs: deps.sentenceWindowMs,
                     verdictVotes: {},
                     sentenceVotes: {},
+                    pressVotes: {},
+                    presentVotes: {},
                     roleAssignments,
                     // Phase 3: Add genre tracking
                     currentGenre: selectedPrompt.genre,
@@ -669,10 +665,9 @@ function registerApiRoutes(
             res.setHeader('Content-Type', metricsContentType);
             res.status(200).send(metrics);
         } catch (error) {
-            logger.error(
-                '[metrics] failed to render metrics:',
-                { error: error instanceof Error ? error.message : error },
-            );
+            logger.error('[metrics] failed to render metrics:', {
+                error: error instanceof Error ? error.message : error,
+            });
             res.status(500).send('failed to render metrics');
         }
     });
@@ -719,25 +714,53 @@ function registerApiRoutes(
         '/api/court/sessions/:id/press',
         audienceInteractionLimiter,
         async (req: Request, res: Response) => {
-            const session = await deps.store.getSession(req.params.id);
-            if (!session) {
+            try {
+                const session = await deps.store.getSession(req.params.id);
+                if (!session) {
+                    return sendError(
+                        res,
+                        404,
+                        'SESSION_NOT_FOUND',
+                        'Session not found',
+                    );
+                }
+
+                const statementNumber = parseInt(req.body?.statementNumber, 10);
+                if (isNaN(statementNumber) || statementNumber < 1) {
+                    return sendError(
+                        res,
+                        400,
+                        'INVALID_STATEMENT_NUMBER',
+                        'statementNumber must be a positive integer',
+                    );
+                }
+
+                // Increment vote count for this statement
+                session.metadata.pressVotes[statementNumber] =
+                    (session.metadata.pressVotes[statementNumber] ?? 0) + 1;
+
+                // Emit vote_updated event
+                deps.store.emitEvent(req.params.id, 'press_vote_updated', {
+                    statementNumber,
+                    pressVotes: session.metadata.pressVotes,
+                    phase: session.phase,
+                });
+
+                return res.json({
+                    ok: true,
+                    action: 'press',
+                    statementNumber,
+                    pressVotes: session.metadata.pressVotes,
+                });
+            } catch (error) {
+                console.error('Error in press endpoint:', error);
                 return sendError(
                     res,
-                    404,
-                    'SESSION_NOT_FOUND',
-                    'Session not found',
+                    500,
+                    'PRESS_FAILED',
+                    'Failed to record press vote',
                 );
             }
-            deps.store.emitEvent(req.params.id, 'render_directive', {
-                directive: {
-                    effect: 'shake',
-                    camera:
-                        session.phase === 'witness_exam' ? 'witness' : 'wide',
-                },
-                phase: session.phase ?? 'witness_exam',
-                emittedAt: new Date().toISOString(),
-            });
-            res.json({ ok: true, action: 'press' });
         },
     );
 
@@ -745,37 +768,157 @@ function registerApiRoutes(
         '/api/court/sessions/:id/present',
         audienceInteractionLimiter,
         async (req: Request, res: Response) => {
-            const session = await deps.store.getSession(req.params.id);
-            if (!session) {
+            try {
+                const session = await deps.store.getSession(req.params.id);
+                if (!session) {
+                    return sendError(
+                        res,
+                        404,
+                        'SESSION_NOT_FOUND',
+                        'Session not found',
+                    );
+                }
+
+                const evidenceId =
+                    typeof req.body?.evidenceId === 'string' ?
+                        req.body.evidenceId.trim()
+                    :   undefined;
+                if (!evidenceId) {
+                    return sendError(
+                        res,
+                        400,
+                        'MISSING_EVIDENCE_ID',
+                        'evidenceId is required',
+                    );
+                }
+
+                // Increment vote count for this evidence
+                session.metadata.presentVotes[evidenceId] =
+                    (session.metadata.presentVotes[evidenceId] ?? 0) + 1;
+
+                // Emit vote_updated event
+                deps.store.emitEvent(req.params.id, 'present_vote_updated', {
+                    evidenceId,
+                    presentVotes: session.metadata.presentVotes,
+                    phase: session.phase,
+                });
+
+                return res.json({
+                    ok: true,
+                    action: 'present',
+                    evidenceId,
+                    presentVotes: session.metadata.presentVotes,
+                });
+            } catch (error) {
+                console.error('Error in present endpoint:', error);
                 return sendError(
                     res,
-                    404,
-                    'SESSION_NOT_FOUND',
-                    'Session not found',
+                    500,
+                    'PRESENT_FAILED',
+                    'Failed to record present vote',
                 );
             }
-            const evidenceId =
-                typeof req.body?.evidenceId === 'string' ?
-                    req.body.evidenceId
-                :   undefined;
-            if (!evidenceId) {
-                return sendError(
-                    res,
-                    400,
-                    'MISSING_EVIDENCE_ID',
-                    'evidenceId is required',
-                );
+        },
+    );
+
+    // EventSub webhook for channel point redemptions
+    const redemptionLimiter = new RedemptionRateLimiter(
+        DEFAULT_REDEMPTION_RATE_LIMIT,
+    );
+
+    app.post(
+        '/api/twitch/eventsub',
+        express.json(),
+        async (req: Request, res: Response) => {
+            // Validate EventSub signature if client secret is available
+            const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+            if (clientSecret && !validateEventSubSignature(req, clientSecret)) {
+                console.warn('[EventSub] Invalid signature');
+                return res.status(403).json({ error: 'Invalid signature' });
             }
-            deps.store.emitEvent(req.params.id, 'render_directive', {
-                directive: {
-                    effect: 'take_that',
-                    evidencePresent: evidenceId,
-                    camera: 'evidence',
-                },
-                phase: session.phase ?? 'evidence_reveal',
-                emittedAt: new Date().toISOString(),
-            });
-            res.json({ ok: true, action: 'present', evidenceId });
+
+            // Parse webhook
+            const event = parseEventSubWebhook(req.body);
+            if (!event) {
+                // Return 204 for verification or non-redemption events
+                return res.status(204).send();
+            }
+
+            // Only handle channel point redemptions
+            if (
+                event.subscription.type !==
+                'channel.channel_points_custom_reward_redemption.add'
+            ) {
+                return res.status(204).send();
+            }
+
+            const sessionId = req.query.sessionId as string | undefined;
+            if (!sessionId) {
+                console.warn('[EventSub] Missing sessionId query parameter');
+                return res
+                    .status(400)
+                    .json({ error: 'sessionId query parameter required' });
+            }
+
+            try {
+                const session = await deps.store.getSession(sessionId);
+                if (!session) {
+                    console.warn(`[EventSub] Session not found: ${sessionId}`);
+                    return res.status(404).json({ error: 'Session not found' });
+                }
+
+                const rewardTitle = event.event.reward.title;
+                const actionMapping = mapRedemptionToAction(rewardTitle);
+
+                if (!actionMapping) {
+                    console.log(`[EventSub] Unknown reward: ${rewardTitle}`);
+                    return res.status(204).send();
+                }
+
+                const action = actionMapping.action;
+                const username = event.event.user_name;
+
+                // Check rate limit
+                const rateLimitCheck = redemptionLimiter.check(
+                    sessionId,
+                    action,
+                );
+                if (!rateLimitCheck.allowed) {
+                    console.log(
+                        `[EventSub] Redemption rate limited: ${action} from ${username} (${rateLimitCheck.reason})`,
+                    );
+                    return res.status(429).json({
+                        error: 'Rate limited',
+                        reason: rateLimitCheck.reason,
+                    });
+                }
+
+                // Record the redemption
+                redemptionLimiter.record(sessionId, action);
+
+                // Emit event for each redemption type
+                deps.store.emitEvent(sessionId, 'render_directive', {
+                    directive: {
+                        effect:
+                            action === 'objection' ? 'present_force'
+                            : action === 'hold_it' ? 'witness_interrupt'
+                            : 'judge_intervention',
+                        redemptionUsername: username,
+                        redemptionType: action,
+                    },
+                    phase: session.phase,
+                    emittedAt: new Date().toISOString(),
+                });
+
+                console.log(
+                    `[EventSub] Processed redemption: ${action} from ${username} in session ${sessionId}`,
+                );
+
+                return res.json({ ok: true, action, username });
+            } catch (error) {
+                console.error('[EventSub] Error processing webhook:', error);
+                return res.status(500).json({ error: 'Internal server error' });
+            }
         },
     );
 
@@ -922,9 +1065,9 @@ const isMainModule = (() => {
 if (isMainModule) {
     bootstrap().catch(error => {
         const context =
-            error instanceof Error
-                ? { message: error.message, stack: error.stack }
-                : { error };
+            error instanceof Error ?
+                { message: error.message, stack: error.stack }
+            :   { error };
         logger.error('Bootstrap failed', context);
         process.exit(1);
     });

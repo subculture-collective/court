@@ -130,7 +130,12 @@ function emitRenderDirective(
     store
         .patchMetadata(session.id, { lastRenderDirective: directive })
         // eslint-disable-next-line no-console
-        .catch(err => console.error('[orchestrator] patchMetadata render_directive failed', err));
+        .catch(err =>
+            console.error(
+                '[orchestrator] patchMetadata render_directive failed',
+                err,
+            ),
+        );
     store.emitEvent(session.id, 'render_directive', {
         directive,
         turnId,
@@ -250,7 +255,7 @@ async function generateTurn(input: {
 }): Promise<CourtTurn> {
     const { store, session, speaker, role, userInstruction } = input;
 
-    const systemPrompt = buildCourtSystemPrompt({
+    const systemPrompt = await buildCourtSystemPrompt({
         agentId: speaker,
         role,
         topic: session.topic,
@@ -448,7 +453,9 @@ function emitCaseFile(store: CourtSessionStore, session: CourtSession): void {
     store
         .patchMetadata(session.id, { caseFile })
         // eslint-disable-next-line no-console
-        .catch(err => console.error('[orchestrator] patchMetadata case_file failed', err));
+        .catch(err =>
+            console.error('[orchestrator] patchMetadata case_file failed', err),
+        );
     store.emitEvent(session.id, 'case_file_generated', {
         caseFile,
         sessionId: session.id,
@@ -480,13 +487,96 @@ function emitWitnessStatement(
     store
         .patchMetadata(session.id, { witnessStatements })
         // eslint-disable-next-line no-console
-        .catch(err => console.error('[orchestrator] patchMetadata witness_statement failed', err));
+        .catch(err =>
+            console.error(
+                '[orchestrator] patchMetadata witness_statement failed',
+                err,
+            ),
+        );
 
     store.emitEvent(session.id, 'witness_statement', {
         statement,
         phase: session.phase,
         emittedAt: new Date().toISOString(),
     });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Audience action integration (#77)
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the winning press statement number from audience votes
+ * Returns highest-voted statement number or null if no votes
+ */
+function getWinningPressStatement(
+    pressVotes: Record<number, number>,
+): number | null {
+    const entries = Object.entries(pressVotes);
+    if (entries.length === 0) return null;
+
+    const winner = entries.reduce((best, current) => {
+        const [stmtNum, voteCount] = current;
+        const [bestNum, bestCount] = best;
+        return voteCount > bestCount ? current : best;
+    });
+
+    return parseInt(winner[0], 10);
+}
+
+/**
+ * Get the winning evidence ID from audience votes
+ * Returns highest-voted evidence ID or null if no votes
+ */
+function getWinningPresentEvidence(
+    presentVotes: Record<string, number>,
+): string | null {
+    const entries = Object.entries(presentVotes);
+    if (entries.length === 0) return null;
+
+    const winner = entries.reduce((best, current) => {
+        const [evidenceId, voteCount] = current;
+        const [bestId, bestCount] = best;
+        return voteCount > bestCount ? current : best;
+    });
+
+    return winner[0];
+}
+
+/**
+ * Check if there's a winning audience action and log it
+ * Used as a reference point for future audience-driven orchestration
+ */
+function checkAudienceActions(session: CourtSession): void {
+    if (session.phase !== 'witness_exam') return;
+
+    const winningPress = getWinningPressStatement(session.metadata.pressVotes);
+    const winningPresent = getWinningPresentEvidence(
+        session.metadata.presentVotes,
+    );
+
+    if (winningPress) {
+        // eslint-disable-next-line no-console
+        console.log(
+            `[audience] Press vote winning: statement ${winningPress} in session ${session.id}`,
+        );
+    }
+
+    if (winningPresent) {
+        // eslint-disable-next-line no-console
+        console.log(
+            `[audience] Present vote winning: evidence ${winningPresent} in session ${session.id}`,
+        );
+    }
+}
+
+/**
+ * Clear audience votes for a new phase loop
+ * Called when transitioning between witness cycles
+ */
+function clearAudienceVotes(session: CourtSession): void {
+    session.metadata.pressVotes = {};
+    session.metadata.presentVotes = {};
 }
 
 export async function runCourtSession(
