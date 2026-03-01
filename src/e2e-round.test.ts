@@ -57,6 +57,8 @@ test('e2e round completes with witness caps and recap cadence', async () => {
                 sentenceVoteWindowMs: 1,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -135,13 +137,17 @@ test('e2e round completes with witness caps and recap cadence', async () => {
         assert.ok(judgeBudgetEvent);
         assert.equal(judgeBudgetEvent?.payload.appliedMaxTokens, 18);
 
-        const lastTokenEstimate = tokenEstimateEvents[tokenEstimateEvents.length - 1];
+        const lastTokenEstimate =
+            tokenEstimateEvents[tokenEstimateEvents.length - 1];
         assert.ok(lastTokenEstimate);
         assert.equal(
             typeof lastTokenEstimate?.payload.cumulativeEstimatedTokens,
             'number',
         );
-        assert.equal(typeof lastTokenEstimate?.payload.estimatedCostUsd, 'number');
+        assert.equal(
+            typeof lastTokenEstimate?.payload.estimatedCostUsd,
+            'number',
+        );
     } finally {
         if (previousCapTokens === undefined) {
             delete process.env.WITNESS_MAX_TOKENS;

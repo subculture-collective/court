@@ -1,4 +1,5 @@
 import { AGENTS } from '../agents.js';
+import { sample } from './transcript-sampler.js';
 import type {
     AgentId,
     CaseType,
@@ -49,39 +50,47 @@ const GENRE_ROLE_VARIATIONS: Record<GenreTag, Record<string, string>> = {
 };
 
 function rolePrompt(role: CourtRole, genre?: GenreTag): string {
-    // Handle witness roles (all witness_N use the same prompt)
     if (role.startsWith('witness_')) {
         return COURT_ROLE_PROMPTS.witness;
     }
-
-    // If genre specified and has custom variation, use it
     if (genre && GENRE_ROLE_VARIATIONS[genre]?.[role]) {
         return GENRE_ROLE_VARIATIONS[genre][role];
     }
-
-    // Default fallback
     return COURT_ROLE_PROMPTS[role] ?? COURT_ROLE_PROMPTS.witness;
 }
 
-export function buildCourtSystemPrompt(promptConfig: {
+export async function buildCourtSystemPrompt(promptConfig: {
     agentId: AgentId;
     role: CourtRole;
     topic: string;
     caseType: CaseType;
     phase: CourtPhase;
     history: string;
-    genre?: GenreTag; // Phase 3: genre-specific prompt variations
-}): string {
+    genre?: GenreTag;
+}): Promise<string> {
     const { agentId, role, topic, caseType, phase, history, genre } = promptConfig;
     const agent = AGENTS[agentId];
 
     const verdictLabels =
         caseType === 'civil' ? 'Liable / Not Liable' : 'Guilty / Not Guilty';
 
+    let transcriptExamples = '';
+    try {
+        const lines = await sample(agentId, 4);
+        if (lines.length > 0) {
+            transcriptExamples = `\nExample lines from their actual dialogue:\n${lines.map(l => `- "${l}"`).join('\n')}\n`;
+        }
+    } catch {
+        // Transcript sampling is best-effort — missing files don't break the session
+    }
+
     return `
 You are ${agent.displayName} (${agent.role}) performing as courtroom role: ${role}.
 ${rolePrompt(role, genre)}
 
+Character voice:
+${agent.voicePersona}
+${transcriptExamples}
 Case topic:
 ${topic}
 

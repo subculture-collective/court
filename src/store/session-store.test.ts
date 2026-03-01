@@ -24,6 +24,8 @@ async function createRunningSession() {
                 sentenceVoteWindowMs: 10,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
                 roleAssignments: assignCourtRoles(participants),
             },
         });
@@ -235,7 +237,7 @@ test('recordRecap stores recap turn ids and emits judge_recap_emitted', async ()
         await store.setPhase(sessionId, 'openings');
         const recapTurn = await store.addTurn({
             sessionId,
-            speaker: 'chora',
+            speaker: 'phoenix',
             role: 'judge',
             phase: 'openings',
             dialogue: 'Recap: The witness spilled the soup.',
@@ -282,6 +284,8 @@ test(
                     sentenceVoteWindowMs: 10,
                     verdictVotes: {},
                     sentenceVotes: {},
+                    pressVotes: {},
+                    presentVotes: {},
                     roleAssignments: assignCourtRoles(participants),
                 },
             });
@@ -334,6 +338,8 @@ test(
                     sentenceVoteWindowMs: 10,
                     verdictVotes: {},
                     sentenceVotes: {},
+                    pressVotes: {},
+                    presentVotes: {},
                     roleAssignments: assignCourtRoles(participants),
                 },
             });
@@ -351,6 +357,8 @@ test(
                     sentenceVoteWindowMs: 10,
                     verdictVotes: {},
                     sentenceVotes: {},
+                    pressVotes: {},
+                    presentVotes: {},
                     roleAssignments: assignCourtRoles(participants),
                 },
             });
@@ -369,6 +377,8 @@ test(
                     sentenceVoteWindowMs: 10,
                     verdictVotes: {},
                     sentenceVotes: {},
+                    pressVotes: {},
+                    presentVotes: {},
                     roleAssignments: assignCourtRoles(participants),
                 },
             });

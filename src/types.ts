@@ -1,10 +1,21 @@
 export type AgentId =
-    | 'chora'
-    | 'subrosa'
-    | 'thaum'
-    | 'praxis'
-    | 'mux'
-    | 'primus';
+    | 'phoenix'
+    | 'edgeworth'
+    | 'mia'
+    | 'franziska'
+    | 'godot'
+    | 'gumshoe'
+    | 'maya'
+    | 'apollo'
+    | 'athena'
+    | 'ema'
+    | 'klavier'
+    | 'blackquill'
+    | 'trucy';
+
+/** Archetype-level role classification used for casting pools.
+ * Distinct from CourtRole: 'witness' here maps to the witness_1/2/3 slots in CourtRole. */
+export type RoleArchetype = 'judge' | 'prosecutor' | 'defense' | 'witness' | 'bailiff';
 
 export interface AgentConfig {
     id: AgentId;
@@ -12,6 +23,9 @@ export interface AgentConfig {
     role: string;
     description: string;
     color: string;
+    voicePersona: string;
+    roleArchetypes: RoleArchetype[];
+    transcriptDir: string;
 }
 
 export type CaseType = 'criminal' | 'civil';
@@ -92,12 +106,22 @@ export interface CourtSessionMetadata {
     sentenceVoteWindowMs: number;
     verdictVotes: Record<string, number>;
     sentenceVotes: Record<string, number>;
+    pressVotes: Record<number, number>;
+    presentVotes: Record<string, number>;
     voteSnapshots?: {
         verdict?: {
             closedAt: string;
             votes: Record<string, number>;
         };
         sentence?: {
+            closedAt: string;
+            votes: Record<string, number>;
+        };
+        press?: {
+            closedAt: string;
+            votes: Record<number, number>;
+        };
+        present?: {
             closedAt: string;
             votes: Record<string, number>;
         };
@@ -156,6 +180,8 @@ export type CourtEventType =
     | 'turn'
     | 'vote_updated'
     | 'vote_closed'
+    | 'press_vote_updated'
+    | 'present_vote_updated'
     | 'witness_response_capped'
     | 'judge_recap_emitted'
     | 'token_budget_applied'

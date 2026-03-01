@@ -1,42 +1,52 @@
-import type { AgentId, CourtRoleAssignments } from '../types.js';
+import { AGENT_IDS, AGENTS } from '../agents.js';
+import type { AgentId, CourtRoleAssignments, RoleArchetype } from '../types.js';
 
-function uniqueOrder(ids: AgentId[]): AgentId[] {
-    return [...new Set(ids)];
-}
-
-function pickPreferred(
-    preferred: AgentId,
-    pool: AgentId[],
-    used: Set<AgentId>,
-): AgentId {
-    if (pool.includes(preferred) && !used.has(preferred)) {
-        used.add(preferred);
-        return preferred;
+function shuffle<T>(arr: T[]): T[] {
+    const result = [...arr];
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
     }
-
-    const fallback = pool.find(agentId => !used.has(agentId)) ?? pool[0];
-    used.add(fallback);
-    return fallback;
+    return result;
 }
 
-export function assignCourtRoles(
-    participants: AgentId[],
-): CourtRoleAssignments {
-    const pool = uniqueOrder(participants);
+function buildArchetypePool(archetype: RoleArchetype, source: AgentId[]): AgentId[] {
+    return source.filter(id => AGENTS[id].roleArchetypes.includes(archetype));
+}
+
+function pickOne(pool: AgentId[], used: Set<AgentId>, source: AgentId[]): AgentId {
+    const available = shuffle(pool).filter(id => !used.has(id));
+    if (available.length === 0) {
+        const fallback = source.find(id => !used.has(id));
+        if (!fallback) throw new Error('Roster exhausted — not enough characters for all roles');
+        used.add(fallback);
+        return fallback;
+    }
+    used.add(available[0]);
+    return available[0];
+}
+
+function pickMany(pool: AgentId[], used: Set<AgentId>, max: number): AgentId[] {
+    const available = shuffle(pool).filter(id => !used.has(id));
+    const picks = available.slice(0, max);
+    for (const id of picks) used.add(id);
+    return picks;
+}
+
+function assignFromPool(source: AgentId[]): CourtRoleAssignments {
     const used = new Set<AgentId>();
+    const judge = pickOne(buildArchetypePool('judge', source), used, source);
+    const prosecutor = pickOne(buildArchetypePool('prosecutor', source), used, source);
+    const defense = pickOne(buildArchetypePool('defense', source), used, source);
+    const bailiff = pickOne(buildArchetypePool('bailiff', source), used, source);
+    const witnesses = pickMany(buildArchetypePool('witness', source), used, 3);
+    return { judge, prosecutor, defense, witnesses, bailiff };
+}
 
-    const judge = pickPreferred('primus', pool, used);
-    const bailiff = pickPreferred('mux', pool, used);
-    const prosecutor = pickPreferred('subrosa', pool, used);
-    const defense = pickPreferred('chora', pool, used);
+export function assignCourtRoles(participants?: AgentId[]): CourtRoleAssignments {
+    return assignFromPool(participants ?? AGENT_IDS);
+}
 
-    const witnesses = pool.filter(agentId => !used.has(agentId)).slice(0, 3);
-
-    return {
-        judge,
-        prosecutor,
-        defense,
-        witnesses,
-        bailiff,
-    };
+export function participantsFromRoleAssignments(ra: CourtRoleAssignments): AgentId[] {
+    return [ra.judge, ra.prosecutor, ra.defense, ra.bailiff, ...ra.witnesses];
 }

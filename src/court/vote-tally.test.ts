@@ -118,6 +118,8 @@ describe('Vote Lifecycle Integration', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -177,6 +179,8 @@ describe('Vote Lifecycle Integration', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -238,6 +242,8 @@ describe('Vote Lifecycle Integration', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -290,6 +296,8 @@ describe('Vote Lifecycle Integration', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -336,6 +344,8 @@ describe('Vote Lifecycle Integration', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
@@ -383,6 +393,8 @@ describe('Vote Lifecycle Integration', () => {
                 sentenceVoteWindowMs: 20000,
                 verdictVotes: {},
                 sentenceVotes: {},
+                pressVotes: {},
+                presentVotes: {},
             },
         });
 
