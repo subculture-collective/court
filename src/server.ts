@@ -275,12 +275,11 @@ function createSessionHandler(deps: SessionRouteDeps) {
                 : req.body?.caseType === 'criminal' ? 'criminal'
                 : selectedPrompt.caseType; // Use selected prompt's case type if not specified
 
-            const overrideParticipants =
-                Array.isArray(req.body?.participants) ?
-                    (req.body.participants as string[]).filter((id): id is AgentId => isValidAgent(id))
-                :   undefined;
+            const rawOverride = Array.isArray(req.body?.participants)
+                ? (req.body.participants as string[]).filter((id): id is AgentId => isValidAgent(id))
+                : undefined;
 
-            const roleAssignments = assignCourtRoles(overrideParticipants);
+            const roleAssignments = assignCourtRoles(rawOverride && rawOverride.length > 0 ? rawOverride : undefined);
             const participants = participantsFromRoleAssignments(roleAssignments);
 
             const sentenceOptions =
