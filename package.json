@@ -22,7 +22,7 @@
     "dependencies": {
         "dotenv": "^17.2.3",
         "express": "^4.21.2",
-        "express-rate-limit": "^8.2.1",
+        "express-rate-limit": "^8.2.2",
         "howler": "^2.2.4",
         "pixi.js": "^8.0.0",
         "postgres": "^3.4.5",
